@@ -61,6 +61,7 @@ struct Entry {
 struct Settings {
     uint64_t ramBytes = 512 * MiB, diskBytes = 2048 * MiB, gpuBytes = 256 * MiB;
     bool thumbnails = false;
+    bool fileTree = true;
 };
 struct Frame {
     uint32_t width = 0, height = 0, originalWidth = 0, originalHeight = 0;

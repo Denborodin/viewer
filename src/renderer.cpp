@@ -80,7 +80,8 @@ void Renderer::resize() {
 D2D1_RECT_F Renderer::viewport(const ViewModel& m) const {
     RECT r;
     GetClientRect(window_, &r);
-    return D2D1::RectF(m.sidebar ? 200 * m.dpi : 0, 44 * m.dpi, (float)r.right,
+    return D2D1::RectF(m.treeWidth + (m.sidebar ? 200 * m.dpi : 0), 44 * m.dpi,
+                       std::max(m.treeWidth + (m.sidebar ? 200 * m.dpi : 0) + 1, (float)r.right),
                        std::max(44 * m.dpi, (float)r.bottom - 30 * m.dpi));
 }
 float Renderer::fitZoom(const ViewModel& m) const {
@@ -145,8 +146,8 @@ void Renderer::draw(const ViewModel& m) {
     brush_->SetColor(color(0x1c2028));
     target_->FillRectangle(D2D1::RectF(0, 0, size.width, 44 * m.dpi), brush_.Get());
     const std::pair<const wchar_t*, float> commands[] = {
-        {L"Открыть", 100},   {L"Миниатюры", 125}, {L"Вписать", 100},  {L"1:1", 65},
-        {L"Повернуть", 115}, {L"Закладки", 110},  {L"Настройки", 130}};
+        {L"Открыть", 90}, {L"Файлы", 75},      {L"Миниатюры", 115}, {L"Вписать", 90},
+        {L"1:1", 50},     {L"Повернуть", 105}, {L"Закладки", 100},  {L"Настройки", 120}};
     float x = 12 * m.dpi;
     for (auto [label, width] : commands) {
         text(label, D2D1::RectF(x, 0, x + width * m.dpi, 44 * m.dpi), color(0xdde3ee));
@@ -178,8 +179,9 @@ void Renderer::draw(const ViewModel& m) {
     target_->PopAxisAlignedClip();
     if (m.sidebar) {
         brush_->SetColor(color(0x191d25));
-        target_->FillRectangle(D2D1::RectF(0, 44 * m.dpi, v.left, v.bottom), brush_.Get());
-        target_->PushAxisAlignedClip(D2D1::RectF(0, v.top, v.left, v.bottom), D2D1_ANTIALIAS_MODE_ALIASED);
+        target_->FillRectangle(D2D1::RectF(m.treeWidth, 44 * m.dpi, v.left, v.bottom), brush_.Get());
+        target_->PushAxisAlignedClip(D2D1::RectF(m.treeWidth, v.top, v.left, v.bottom),
+                                     D2D1_ANTIALIAS_MODE_ALIASED);
         size_t visible = (size_t)((v.bottom - v.top) / (146 * m.dpi)) + 1;
         for (auto it = thumbBitmaps_.begin(); it != thumbBitmaps_.end();) {
             if (it->first < m.thumbFirst || it->first >= m.thumbFirst + visible)
@@ -190,7 +192,8 @@ void Renderer::draw(const ViewModel& m) {
         for (size_t row = 0; row < visible && m.thumbFirst + row < m.entries.size(); ++row) {
             size_t i = m.thumbFirst + row;
             float y = v.top + row * 146 * m.dpi;
-            auto rect = D2D1::RectF(8 * m.dpi, y + 6 * m.dpi, v.left - 8 * m.dpi, y + 142 * m.dpi);
+            auto rect =
+                D2D1::RectF(m.treeWidth + 8 * m.dpi, y + 6 * m.dpi, v.left - 8 * m.dpi, y + 142 * m.dpi);
             brush_->SetColor(color(i == m.selected ? 0x29425e : 0x222833));
             target_->FillRoundedRectangle(D2D1::RoundedRect(rect, 5 * m.dpi, 5 * m.dpi), brush_.Get());
             auto t = m.thumbs.find(i);
@@ -210,13 +213,13 @@ void Renderer::draw(const ViewModel& m) {
                     float ratio = std::min(170 * m.dpi / w, 104 * m.dpi / h);
                     w *= ratio;
                     h *= ratio;
-                    target_->DrawBitmap(
-                        saved.second.Get(),
-                        D2D1::RectF((v.left - w) / 2, y + 12 * m.dpi, (v.left + w) / 2, y + 12 * m.dpi + h));
+                    target_->DrawBitmap(saved.second.Get(),
+                                        D2D1::RectF((m.treeWidth + v.left - w) / 2, y + 12 * m.dpi,
+                                                    (m.treeWidth + v.left + w) / 2, y + 12 * m.dpi + h));
                 }
             }
             text(std::to_wstring(i + 1) + L"  " + fs::path(m.entries[i].name).filename().wstring(),
-                 D2D1::RectF(16 * m.dpi, y + 117 * m.dpi, v.left - 12 * m.dpi, y + 140 * m.dpi),
+                 D2D1::RectF(m.treeWidth + 16 * m.dpi, y + 117 * m.dpi, v.left - 12 * m.dpi, y + 140 * m.dpi),
                  color(0xbdc7d6), small_.Get());
         }
         target_->PopAxisAlignedClip();

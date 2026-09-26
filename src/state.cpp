@@ -76,6 +76,8 @@ Settings StateStore::settings() {
             r.gpuBytes = std::clamp(v, 32 * MiB, 1024 * MiB);
         if (k == "thumbnails")
             r.thumbnails = v != 0;
+        if (k == "file_tree")
+            r.fileTree = v != 0;
     }
     r.ramBytes = std::min(r.ramBytes, physicalMemory() / 8);
     return r;
@@ -85,7 +87,8 @@ void StateStore::saveSettings(const Settings& v) {
     for (auto [k, n] : std::vector<std::pair<const char*, uint64_t>>{{"ram", v.ramBytes},
                                                                      {"disk", v.diskBytes},
                                                                      {"gpu", v.gpuBytes},
-                                                                     {"thumbnails", v.thumbnails ? 1 : 0}}) {
+                                                                     {"thumbnails", v.thumbnails ? 1 : 0},
+                                                                     {"file_tree", v.fileTree ? 1 : 0}}) {
         Statement q(db_, "INSERT OR REPLACE INTO settings VALUES(?,?)");
         q.text(1, k);
         q.integer(2, n);

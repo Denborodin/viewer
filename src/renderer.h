@@ -10,6 +10,7 @@ struct ViewModel {
     size_t selected = 0, thumbFirst = 0;
     bool sidebar = false, fit = true, bookmarked = false, loading = false;
     float zoom = 1, panX = 0, panY = 0, dpi = 1;
+    float treeWidth = 0;
     int rotation = 0;
     std::wstring status = L"Откройте изображение, папку, ZIP или RAR";
     std::wstring sourceName;

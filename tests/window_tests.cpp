@@ -12,6 +12,41 @@ void require(bool value, const char* message) {
 bool same(const RECT& a, const RECT& b) {
     return EqualRect(&a, &b) != FALSE;
 }
+void treeScreenshot(HWND hwnd, const fs::path& path) {
+    RECT r;
+    GetClientRect(hwnd, &r);
+    auto dc = CreateCompatibleDC(nullptr);
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = r.right;
+    info.bmiHeader.biHeight = -r.bottom;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    void* pixels = nullptr;
+    auto bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    auto previous = SelectObject(dc, bitmap);
+    SendMessageW(hwnd, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_ERASEBKGND);
+    ComPtr<IWICImagingFactory> wic;
+    check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)),
+          "Screenshot WIC");
+    ComPtr<IWICBitmap> source;
+    check(wic->CreateBitmapFromHBITMAP(bitmap, nullptr, WICBitmapIgnoreAlpha, &source), "Tree bitmap");
+    SelectObject(dc, previous);
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+    ComPtr<IWICStream> stream;
+    wic->CreateStream(&stream);
+    check(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE), "Tree PNG");
+    ComPtr<IWICBitmapEncoder> encoder;
+    wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);
+    encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache);
+    ComPtr<IWICBitmapFrameEncode> frame;
+    encoder->CreateNewFrame(&frame, nullptr);
+    frame->Initialize(nullptr);
+    check(frame->WriteSource(source.Get(), nullptr), "Tree pixels");
+    check(frame->Commit(), "Tree frame");
+    check(encoder->Commit(), "Tree PNG commit");
+}
 struct Window {
     App app{GetModuleHandleW(nullptr)};
     HWND hwnd = nullptr;
@@ -115,6 +150,78 @@ int wmain(int argc, wchar_t** argv) {
         }
         require(same(store.windowPlacement()->rcNormalPosition, expected.rcNormalPosition),
                 "Shutdown flushes geometry despite cancelled image work");
+        auto files = root / L"Дерево & архивы";
+        fs::create_directories(files / L"Вложенная папка");
+        for (auto name : {L"10.zip", L"2.RAR", L"1.zip", L"photo.psd", L"ignored.txt"})
+            writeFileAtomic(files / name, Bytes{1});
+        writeFileAtomic(files / L"Вложенная папка" / L"3.zip", Bytes{1});
+        auto entries = listTreeDirectory(files);
+        require(entries.size() == 5 && entries.front().directory,
+                "Tree filters files and lists folders first");
+        require(adjacentArchive(entries, files / L"1.zip", 1) == files / L"2.RAR",
+                "Natural next archive across formats");
+        require(adjacentArchive(entries, files / L"10.zip", -1) == files / L"2.RAR",
+                "Natural previous archive");
+        require(!adjacentArchive(entries, files / L"10.zip", 1), "Last archive does not wrap");
+        require(!adjacentArchive(entries, files / L"1.zip", -1), "First archive does not wrap");
+        require(adjacentArchive(entries, files, 1) == files / L"1.zip", "Folder jumps to first archive");
+        require(adjacentArchive(entries, files, -1) == files / L"10.zip",
+                "Folder jumps backward to last archive");
+        require(adjacentArchive(entries, files / L"1.zip", 2) == files / L"10.zip",
+                "Repeated archive steps accumulate");
+        bool cancelled = false;
+        try {
+            listTreeDirectory(files, [] { return true; });
+        } catch (const Cancelled&) {
+            cancelled = true;
+        }
+        require(cancelled, "Directory enumeration cancellation");
+        {
+            Window window;
+            window.app.currentPath = files / L"1.zip";
+            window.app.fileTree->location(window.app.currentPath);
+            auto wait = [&](const std::function<bool()>& done) {
+                auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                do {
+                    window.app.fileTree->poll();
+                    if (done())
+                        return;
+                    Sleep(1);
+                } while (std::chrono::steady_clock::now() < deadline);
+                throw Error("Tree/navigation timeout");
+            };
+            wait([&] { return TreeView_GetCount(window.app.fileTree->handle()) >= 7; });
+            require(window.app.model.treeWidth > 0, "Tree reserves viewer space");
+            auto selected = TreeView_GetSelection(window.app.fileTree->handle());
+            wchar_t text[256]{};
+            TVITEMW item{};
+            item.hItem = selected;
+            item.mask = TVIF_TEXT;
+            item.pszText = text;
+            item.cchTextMax = 256;
+            TreeView_GetItem(window.app.fileTree->handle(), &item);
+            require(std::wstring(text) == L"1.zip", "Tree selects active archive");
+            SendMessageW(window.app.fileTree->handle(), WM_KEYDOWN, VK_NEXT, 0);
+            wait([&] { return window.app.currentPath == files / L"2.RAR"; });
+            require(true, "Page Down works with tree focus");
+            SendMessageW(window.hwnd, WM_KEYDOWN, VK_PRIOR, 0);
+            wait([&] { return window.app.currentPath == files / L"1.zip"; });
+            require(true, "Page Up works with viewer focus");
+            auto treeRoot = TreeView_GetParent(window.app.fileTree->handle(),
+                                               TreeView_GetSelection(window.app.fileTree->handle()));
+            auto folder = TreeView_GetChild(window.app.fileTree->handle(), treeRoot);
+            TreeView_Expand(window.app.fileTree->handle(), folder, TVE_EXPAND);
+            wait([&] { return TreeView_GetChild(window.app.fileTree->handle(), folder) != nullptr; });
+            require(true, "Subfolders expand lazily");
+            treeScreenshot(window.app.fileTree->handle(), root / L"file-tree.png");
+            window.app.command(ToggleFileTree);
+            require(window.app.model.treeWidth == 0, "Tree can be hidden");
+            window.app.command(ToggleFileTree);
+            require(window.app.model.treeWidth > 0, "Tree can be restored");
+            window.app.fileTree->jump(files / L"1.zip", 1);
+            window.app.fileTree->location(files / L"Вложенная папка");
+            window.close(); // Pending filesystem results must not outlive the child control.
+        }
         std::cout << "PASS " << assertions << " window placement assertions\n";
         CoUninitialize();
         return 0;

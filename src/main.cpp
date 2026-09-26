@@ -1,4 +1,5 @@
 #include "pipeline.h"
+#include "file_tree.h"
 #include "renderer.h"
 #include "resource.h"
 #include "shell_integration.h"
@@ -26,7 +27,10 @@ enum Command {
     ToggleBookmark,
     Bookmarks,
     Preferences,
-    About
+    About,
+    ToggleFileTree,
+    PreviousArchive,
+    NextArchive
 };
 struct App {
     HWND window = nullptr, settingsWindow = nullptr;
@@ -35,6 +39,9 @@ struct App {
     std::shared_ptr<StateStore> state;
     std::unique_ptr<ImagePipeline> pipeline;
     std::unique_ptr<Renderer> renderer;
+    std::unique_ptr<FileTree> fileTree;
+    fs::path currentPath;
+    fs::path sourcePath;
     Settings settings;
     fs::path initialPath, testOutput;
     std::optional<uint32_t> initialEntry;
@@ -71,6 +78,9 @@ struct App {
         return show == SW_SHOWNORMAL || show == SW_SHOW || show == SW_SHOWDEFAULT ? restored : show;
     }
     void open(const fs::path& path, std::optional<uint32_t> entry = {}) {
+        currentPath = fs::absolute(path).lexically_normal();
+        if (fileTree)
+            fileTree->location(currentPath);
         model.loading = true;
         model.status = L"Открытие: " + path.filename().wstring();
         model.thumbs.clear();
@@ -82,6 +92,16 @@ struct App {
         decodeSize();
         requestedToken = pipeline->open(path, entry);
         invalidate();
+    }
+    void layoutTree() {
+        bool visible = settings.fileTree && !full;
+        model.treeWidth = visible ? 240 * model.dpi : 0;
+        if (fileTree)
+            fileTree->layout(model.dpi, visible);
+    }
+    void archive(int direction) {
+        if (fileTree)
+            fileTree->jump(currentPath, direction);
     }
     void decodeSize() {
         if (!pipeline || !renderer)
@@ -185,6 +205,9 @@ struct App {
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             full = false;
         }
+        layoutTree();
+        decodeSize();
+        invalidate();
     }
     void command(UINT id) {
         switch (id) {
@@ -202,6 +225,20 @@ struct App {
             break;
         case Next:
             navigate(1);
+            break;
+        case PreviousArchive:
+            archive(-1);
+            break;
+        case NextArchive:
+            archive(1);
+            break;
+        case ToggleFileTree:
+            settings.fileTree = !settings.fileTree;
+            layoutTree();
+            pipeline->configure(settings);
+            decodeSize();
+            invalidate();
+            SetFocus(window);
             break;
         case Fit:
             model.fit = true;
@@ -243,7 +280,7 @@ struct App {
             break;
         case About:
             MessageBoxW(window,
-                        L"Viewer 0.1.1\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
+                        L"Viewer 0.1.2\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
                         L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
                         L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
                         L"О Viewer", MB_OK | MB_ICONINFORMATION);
@@ -358,6 +395,7 @@ struct App {
         if (e->sourceToken != requestedToken && e->type != Event::Type::SettingsSaved)
             return;
         if (e->type == Event::Type::Opened) {
+            sourcePath = e->path;
             model.entries = std::move(e->entries);
             model.selected = e->index;
             model.sourceName = e->path.filename().wstring();
@@ -367,6 +405,8 @@ struct App {
             model.frame = std::move(e->frame);
             model.selected = e->index;
             model.bookmarked = e->bookmarked;
+            if (fileTree && !isArchive(sourcePath) && e->index < model.entries.size())
+                fileTree->highlight(sourcePath / model.entries[e->index].name);
             model.loading = false;
             model.status = std::to_wstring(e->index + 1) + L" / " + std::to_wstring(model.entries.size()) +
                            L"   " + model.entries[e->index].name;
@@ -443,6 +483,14 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
                 if (PostMessageW(hwnd, WM_EVENT, 0, (LPARAM)e.get()))
                     e.release();
             });
+            app->fileTree =
+                std::make_unique<FileTree>(hwnd, [app](const fs::path& path) { app->open(path); });
+            app->layoutTree();
+            SetTimer(hwnd, 42, 50, nullptr);
+            if (app->initialPath.empty()) {
+                app->currentPath = fs::current_path();
+                app->fileTree->location(app->currentPath);
+            }
             app->decodeSize();
             if (!app->initialPath.empty())
                 app->open(app->initialPath, app->initialEntry);
@@ -465,6 +513,7 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
         case WM_ERASEBKGND:
             return 1;
         case WM_SIZE:
+            app->layoutTree();
             if (app->renderer) {
                 app->renderer->resize();
                 SetTimer(hwnd, 1, 100, nullptr);
@@ -479,7 +528,10 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_TIMER:
-            if (wp == 1) {
+            if (wp == 42) {
+                if (app->fileTree)
+                    app->fileTree->poll();
+            } else if (wp == 1) {
                 KillTimer(hwnd, 1);
                 app->decodeSize();
                 app->requestThumbs();
@@ -518,15 +570,27 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
         case WM_COMMAND:
             app->command(LOWORD(wp));
             return 0;
+        case WM_NOTIFY:
+            if (app->fileTree)
+                return app->fileTree->notify((NMHDR*)lp);
+            return 0;
         case WM_KEYDOWN: {
             bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
             if (ctrl && wp == 'O')
                 app->command(Open);
             else if (ctrl && wp == 'B')
                 app->command(ToggleBookmark);
-            else if (wp == VK_RIGHT || wp == VK_DOWN || wp == VK_NEXT || wp == VK_SPACE)
+            else if (wp == VK_NEXT)
+                app->archive(1);
+            else if (wp == VK_PRIOR)
+                app->archive(-1);
+            else if (wp == VK_F9)
+                app->command(ToggleFileTree);
+            else if (wp == VK_F5 && app->fileTree)
+                app->fileTree->refresh();
+            else if (wp == VK_RIGHT || wp == VK_DOWN || wp == VK_SPACE)
                 app->navigate(1);
-            else if (wp == VK_LEFT || wp == VK_UP || wp == VK_PRIOR)
+            else if (wp == VK_LEFT || wp == VK_UP)
                 app->navigate(-1);
             else if (wp == VK_HOME)
                 app->select(0, -1);
@@ -558,22 +622,26 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
                 app->fullscreen();
             return 0;
         case WM_LBUTTONDOWN: {
+            SetFocus(hwnd);
             float x = (float)GET_X_LPARAM(lp), y = (float)GET_Y_LPARAM(lp);
             if (y < 44 * app->model.dpi) {
-                const float widths[] = {100, 125, 100, 65, 115, 110, 130};
-                const UINT ids[] = {Open, Thumbnails, Fit, Actual, Rotate, Bookmarks, Preferences};
+                const float widths[] = {90, 75, 115, 90, 50, 105, 100, 120};
+                const UINT ids[] = {Open,   ToggleFileTree, Thumbnails, Fit,
+                                    Actual, Rotate,         Bookmarks,  Preferences};
                 float left = 12 * app->model.dpi;
-                for (int i = 0; i < 7; ++i) {
+                for (int i = 0; i < 8; ++i) {
                     if (x >= left && x < left + widths[i] * app->model.dpi) {
                         app->command(ids[i]);
                         break;
                     }
                     left += widths[i] * app->model.dpi;
                 }
-            } else if (app->model.sidebar && x < 200 * app->model.dpi) {
+            } else if (app->model.sidebar && x >= app->model.treeWidth &&
+                       x < app->model.treeWidth + 200 * app->model.dpi) {
                 size_t row = (size_t)((y - 44 * app->model.dpi) / (146 * app->model.dpi));
                 app->select(app->model.thumbFirst + row);
             } else {
+                SetFocus(hwnd);
                 app->drag = true;
                 app->dragStart = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
                 app->oldPanX = app->model.panX;
@@ -612,7 +680,8 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
                     SetTimer(hwnd, 1, 120, nullptr);
                     app->invalidate();
                 }
-            } else if (app->model.sidebar && p.x < 200 * app->model.dpi) {
+            } else if (app->model.sidebar && p.x >= app->model.treeWidth &&
+                       p.x < app->model.treeWidth + 200 * app->model.dpi) {
                 int64_t next = (int64_t)app->model.thumbFirst - (delta > 0 ? 3 : -3);
                 app->model.thumbFirst = (size_t)std::clamp(
                     next, int64_t(0), (int64_t)std::max<size_t>(1, app->model.entries.size()) - 1);
@@ -632,6 +701,9 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
                      {Rotate, L"Повернуть\tR"},
                      {Fullscreen, L"Полный экран\tF11"},
                      {Thumbnails, L"Миниатюры\tTab"},
+                     {ToggleFileTree, L"Дерево файлов\tF9"},
+                     {PreviousArchive, L"Предыдущий архив\tPage Up"},
+                     {NextArchive, L"Следующий архив\tPage Down"},
                      {ToggleBookmark, L"Добавить / удалить закладку\tCtrl+B"},
                      {Bookmarks, L"Закладки"},
                      {Preferences, L"Настройки"},
@@ -648,6 +720,8 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
         }
         case WM_DESTROY:
             app->closing = true;
+            KillTimer(hwnd, 42);
+            app->fileTree.reset();
             if (app->pipeline && app->testOutput.empty()) {
                 WINDOWPLACEMENT saved{sizeof(saved)};
                 bool valid = true;
@@ -687,7 +761,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     using namespace viewer;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    INITCOMMONCONTROLSEX cc{sizeof(cc), ICC_STANDARD_CLASSES};
+    INITCOMMONCONTROLSEX cc{sizeof(cc), ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES};
     InitCommonControlsEx(&cc);
     int count = 0;
     auto args = CommandLineToArgvW(GetCommandLineW(), &count);
@@ -717,8 +791,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     cls.hIconSm = cls.hIcon;
     cls.lpszClassName = L"Viewer.Window";
     RegisterClassExW(&cls);
-    HWND hwnd = CreateWindowExW(WS_EX_ACCEPTFILES, cls.lpszClassName, L"Viewer", WS_OVERLAPPEDWINDOW,
-                                CW_USEDEFAULT, CW_USEDEFAULT, 1200, 820, nullptr, nullptr, instance, &app);
+    HWND hwnd = CreateWindowExW(WS_EX_ACCEPTFILES, cls.lpszClassName, L"Viewer",
+                                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1200,
+                                820, nullptr, nullptr, instance, &app);
     if (!hwnd) {
         MessageBoxW(nullptr, app.model.status.c_str(), L"Не удалось запустить Viewer", MB_OK | MB_ICONERROR);
         return 1;
