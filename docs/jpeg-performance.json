@@ -1,0 +1,932 @@
+{
+  "before": [
+    {
+      "app_first_render_initial_ms": 198.1,
+      "app_first_render_p95_ms": 213.611,
+      "runs": 20,
+      "os_cache": "uncontrolled; warm after initial run",
+      "app_cache": "empty directory per launch",
+      "samples": [
+        {
+          "first_frame_ms": 198.1,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.119,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.856,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 196.643,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 198.16,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 193.211,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.138,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 198.491,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.477,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 195.887,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.173,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 203.929,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 197.813,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 199.649,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 194.924,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 213.611,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 207.493,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 196.798,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 222.05,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 203.299,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        }
+      ],
+      "mode": "stored",
+      "render": "hidden HWND, Direct2D EndDraw + DwmFlush; timer starts in App constructor",
+      "core": {
+        "runs": 20,
+        "catalog_p95_ms": 1.585,
+        "first_decoded_frame_p95_ms": 27.2777,
+        "cached_bytes_p95_ms": 0.1022,
+        "prepared_frame_submit_p95_ms": 16.1452,
+        "mean_archive_read_bytes": 1833488,
+        "os_cache": "uncontrolled; warm after initial run",
+        "app_cache": "empty per run"
+      }
+    },
+    {
+      "app_first_render_initial_ms": 200.68,
+      "app_first_render_p95_ms": 205.705,
+      "runs": 20,
+      "os_cache": "uncontrolled; warm after initial run",
+      "app_cache": "empty directory per launch",
+      "samples": [
+        {
+          "first_frame_ms": 200.68,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.173,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 204.807,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 204.521,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.456,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.439,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 204.944,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 202.928,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 203.126,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 202.427,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 202.435,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 202.379,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.787,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 203.108,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.608,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 204.839,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 202.433,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.705,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 201.164,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 200.795,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        }
+      ],
+      "mode": "deflate",
+      "render": "hidden HWND, Direct2D EndDraw + DwmFlush; timer starts in App constructor",
+      "core": {
+        "runs": 20,
+        "catalog_p95_ms": 1.7134,
+        "first_decoded_frame_p95_ms": 33.7381,
+        "cached_bytes_p95_ms": 0.1075,
+        "prepared_frame_submit_p95_ms": 15.8444,
+        "mean_archive_read_bytes": 1814896,
+        "os_cache": "uncontrolled; warm after initial run",
+        "app_cache": "empty per run"
+      }
+    }
+  ],
+  "after": [
+    {
+      "samples": [
+        {
+          "first_frame_ms": 188.399,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 186.814,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 186.597,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 192.849,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 187.703,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 189.972,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 185.087,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 184.399,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 191.444,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 188.44,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 188.429,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 187.24,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 188.22,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 190.318,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 190.296,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 185.163,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 189.933,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 187.405,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 187.519,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 189.808,
+          "archive_read_bytes": 5238234,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        }
+      ],
+      "app_cache": "empty directory per launch",
+      "runs": 20,
+      "app_first_render_p95_ms": 191.444,
+      "mode": "stored",
+      "core": {
+        "runs": 20,
+        "catalog_p95_ms": 1.4772,
+        "first_decoded_frame_p95_ms": 14.9092,
+        "cached_bytes_p95_ms": 0.0863,
+        "prepared_frame_submit_p95_ms": 5.6293,
+        "mean_archive_read_bytes": 1833488,
+        "os_cache": "uncontrolled; warm after initial run",
+        "app_cache": "empty per run"
+      },
+      "render": "hidden HWND, Direct2D EndDraw + DwmFlush; timer starts in App constructor",
+      "os_cache": "uncontrolled; warm after initial run",
+      "app_first_render_initial_ms": 188.399
+    },
+    {
+      "samples": [
+        {
+          "first_frame_ms": 193.974,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 194.26,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 195.925,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 193.049,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 193.784,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 205.29,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 195.145,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 188.94,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 189.248,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 193.02,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 192.43,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 194.867,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 191.577,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 192.838,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 193.131,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 194.667,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 191.801,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 192.473,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 192.447,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        },
+        {
+          "first_frame_ms": 190.317,
+          "archive_read_bytes": 5182458,
+          "extractions": 3,
+          "extracted_entries": 3,
+          "extracted_bytes": 5107014,
+          "width": 2560,
+          "height": 1600
+        }
+      ],
+      "app_cache": "empty directory per launch",
+      "runs": 20,
+      "app_first_render_p95_ms": 195.925,
+      "mode": "deflate",
+      "core": {
+        "runs": 20,
+        "catalog_p95_ms": 1.8062,
+        "first_decoded_frame_p95_ms": 20.9361,
+        "cached_bytes_p95_ms": 0.0964,
+        "prepared_frame_submit_p95_ms": 3.2271,
+        "mean_archive_read_bytes": 1814896,
+        "os_cache": "uncontrolled; warm after initial run",
+        "app_cache": "empty per run"
+      },
+      "render": "hidden HWND, Direct2D EndDraw + DwmFlush; timer starts in App constructor",
+      "os_cache": "uncontrolled; warm after initial run",
+      "app_first_render_initial_ms": 193.974
+    }
+  ],
+  "decoder": [
+    {
+      "runs": 30,
+      "p50_ms": 23.4876,
+      "p95_ms": 26.203,
+      "mean_ms": 23.7311,
+      "width": 1728,
+      "height": 1080,
+      "source": "4mp.jpg",
+      "mode": "baseline"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 14.7009,
+      "p95_ms": 15.5452,
+      "mean_ms": 14.7246,
+      "width": 2560,
+      "height": 1600,
+      "source": "4mp.jpg",
+      "mode": "wic-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 13.8367,
+      "p95_ms": 14.8051,
+      "mean_ms": 13.7236,
+      "width": 2560,
+      "height": 1600,
+      "source": "4mp.jpg",
+      "mode": "turbo-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 50.4968,
+      "p95_ms": 52.5438,
+      "mean_ms": 50.7267,
+      "width": 1620,
+      "height": 1080,
+      "source": "24mp.jpg",
+      "mode": "baseline"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 46.8517,
+      "p95_ms": 48.9554,
+      "mean_ms": 46.9067,
+      "width": 3000,
+      "height": 2000,
+      "source": "24mp.jpg",
+      "mode": "wic-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 36.7835,
+      "p95_ms": 39.9305,
+      "mean_ms": 36.9924,
+      "width": 3000,
+      "height": 2000,
+      "source": "24mp.jpg",
+      "mode": "turbo-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 80.8249,
+      "p95_ms": 83.1135,
+      "mean_ms": 80.4326,
+      "width": 1728,
+      "height": 1080,
+      "source": "progressive.jpg",
+      "mode": "baseline"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 70.6407,
+      "p95_ms": 73.8324,
+      "mean_ms": 70.6623,
+      "width": 2560,
+      "height": 1600,
+      "source": "progressive.jpg",
+      "mode": "wic-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 36.667,
+      "p95_ms": 38.6681,
+      "mean_ms": 36.8013,
+      "width": 2560,
+      "height": 1600,
+      "source": "progressive.jpg",
+      "mode": "turbo-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 14.5492,
+      "p95_ms": 16.1702,
+      "mean_ms": 14.4304,
+      "width": 1728,
+      "height": 1080,
+      "source": "grayscale.jpg",
+      "mode": "baseline"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 11.3778,
+      "p95_ms": 12.5074,
+      "mean_ms": 11.4483,
+      "width": 2560,
+      "height": 1600,
+      "source": "grayscale.jpg",
+      "mode": "wic-gpu"
+    },
+    {
+      "runs": 30,
+      "p50_ms": 10.3145,
+      "p95_ms": 11.6929,
+      "mean_ms": 10.4432,
+      "width": 2560,
+      "height": 1600,
+      "source": "grayscale.jpg",
+      "mode": "turbo-gpu"
+    }
+  ]
+}

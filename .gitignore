@@ -1,0 +1,16 @@
+/build/
+/dist/
+/third_party/7zip/
+/third_party/7zip-bin/
+/third_party/libwebp-*/
+/third_party/libjpeg-turbo-*/
+/third_party/jpeg-bin/
+/third_party/*.exe
+/third_party/*.xz
+/third_party/*.gz
+/tests/fixtures/generated/
+*.pfx
+*.key
+*.user
+*.pdb
+/third_party/zlib-*/

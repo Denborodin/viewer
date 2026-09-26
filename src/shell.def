@@ -1,0 +1,4 @@
+LIBRARY ViewerShell
+EXPORTS
+  DllGetClassObject PRIVATE
+  DllCanUnloadNow PRIVATE

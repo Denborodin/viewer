@@ -1,0 +1,32 @@
+{
+  "7zipSource": {
+    "version": "26.03",
+    "url": "https://www.7-zip.org/a/7z2603-src.tar.xz",
+    "sha256": "9CBDE5099C6DEB73691B0579063DA5827522CCBBCBA3F0020FD04E8C8C16C0D4"
+  },
+  "7zipBinary": {
+    "version": "26.03",
+    "url": "https://www.7-zip.org/a/7z2603-x64.exe",
+    "sha256": "0859C524B8A63551848F0C246ABDDCB1D0B7B656B0FBFE879F8D85E61A9E6EDD"
+  },
+  "libwebp": {
+    "version": "1.6.0",
+    "url": "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz",
+    "sha256": "E4AB7009BF0629FD11982D4C2AA83964CF244CFFBA7347ECD39019A9E38C4564"
+  },
+  "jpegSource": {
+    "sha256": "6F30092CEF9FB839779646608F4EE14AE3CBAC989C47FA05E841B0841F09878E",
+    "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+    "version": "3.2.0"
+  },
+  "jpegBinary": {
+    "sha256": "662761D8BA8DAE04AEC74023EBAECEB856C2B56B9B59CFD180759D26300DDA42",
+    "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0-vc-x64.exe",
+    "version": "3.2.0"
+  },
+  "zlib": {
+    "url": "https://zlib.net/fossils/zlib-1.3.2.tar.gz",
+    "sha256": "BB329A0A2CD0274D05519D61C667C062E06990D72E125EE2DFA8DE64F0119D16",
+    "version": "1.3.2"
+  }
+}

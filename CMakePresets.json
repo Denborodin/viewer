@@ -1,0 +1,6 @@
+{
+  "version": 6,
+  "configurePresets": [{"name":"windows-x64","generator":"Visual Studio 17 2022","architecture":"x64","binaryDir":"${sourceDir}/build","cacheVariables":{"CMAKE_INSTALL_PREFIX":"${sourceDir}/dist/Viewer"}}],
+  "buildPresets": [{"name":"release","configurePreset":"windows-x64","configuration":"Release"},{"name":"debug","configurePreset":"windows-x64","configuration":"Debug"}],
+  "testPresets": [{"name":"release","configurePreset":"windows-x64","configuration":"Release","output":{"outputOnFailure":true}}]
+}

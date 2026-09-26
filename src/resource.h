@@ -1,0 +1,11 @@
+#pragma once
+#define IDI_VIEWER 101
+#define IDD_SETTINGS 201
+#define IDC_RAM 1001
+#define IDC_DISK 1002
+#define IDC_CLEAR 1003
+#define IDC_SHELL_STATUS 1004
+#define IDC_ENABLE_SHELL 1005
+#define IDC_DISABLE_SHELL 1006
+#define IDC_REPAIR_SHELL 1007
+#define IDC_GPU 1008
