@@ -26,6 +26,7 @@ class ImagePipeline {
     void toggleBookmark();
     void requestBookmarks();
     void configure(Settings settings);
+    void rememberWindowPlacement(WINDOWPLACEMENT placement);
     void clearCache();
     void cancel();
     uint64_t generation() const {
@@ -47,6 +48,7 @@ class ImagePipeline {
     std::mutex mutex_;
     std::condition_variable cv_;
     bool stop_ = false;
+    std::optional<WINDOWPLACEMENT> finalWindowPlacement_;
     std::atomic<bool> stopping_ = false;
     std::atomic<uint64_t> generation_{0}, sourceToken_{0};
     fs::path pendingPath_;

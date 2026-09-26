@@ -45,7 +45,9 @@ StateStore::StateStore(fs::path root) : root_(std::move(root)) {
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; CREATE TABLE IF NOT EXISTS settings(k TEXT "
         "PRIMARY KEY,v INTEGER); CREATE TABLE IF NOT EXISTS positions(path TEXT PRIMARY KEY,identity TEXT,id "
         "INTEGER); CREATE TABLE IF NOT EXISTS bookmarks(path TEXT,id INTEGER,name TEXT,PRIMARY "
-        "KEY(path,id)); CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,size INTEGER,accessed INTEGER);");
+        "KEY(path,id)); CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,size INTEGER,accessed INTEGER);"
+        "CREATE TABLE IF NOT EXISTS window_state(id INTEGER PRIMARY KEY CHECK(id=1),"
+        "l INTEGER,t INTEGER,r INTEGER,b INTEGER,maximized INTEGER);");
 }
 StateStore::~StateStore() {
     if (db_)
@@ -89,6 +91,39 @@ void StateStore::saveSettings(const Settings& v) {
         q.integer(2, n);
         q.row();
     }
+}
+std::optional<WINDOWPLACEMENT> StateStore::windowPlacement() {
+    std::lock_guard lock(mutex_);
+    Statement q(db_, "SELECT l,t,r,b,maximized FROM window_state WHERE id=1");
+    if (!q.row())
+        return {};
+    for (int i = 0; i < 4; ++i)
+        if (q.number(i) < -1000000 || q.number(i) > 1000000)
+            return {};
+    if (q.number(2) <= q.number(0) || q.number(3) <= q.number(1) || q.number(2) - q.number(0) > 100000 ||
+        q.number(3) - q.number(1) > 100000)
+        return {};
+    WINDOWPLACEMENT p{sizeof(p)};
+    p.rcNormalPosition = {(LONG)q.number(0), (LONG)q.number(1), (LONG)q.number(2), (LONG)q.number(3)};
+    p.showCmd = q.number(4) ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    p.ptMinPosition = p.ptMaxPosition = {-1, -1};
+    return p;
+}
+void StateStore::saveWindowPlacement(const WINDOWPLACEMENT& p) {
+    const auto& r = p.rcNormalPosition;
+    if (r.right <= r.left || r.bottom <= r.top)
+        return;
+    bool minimized =
+        p.showCmd == SW_SHOWMINIMIZED || p.showCmd == SW_MINIMIZE || p.showCmd == SW_SHOWMINNOACTIVE;
+    bool maximized = p.showCmd == SW_SHOWMAXIMIZED || (minimized && (p.flags & WPF_RESTORETOMAXIMIZED));
+    std::lock_guard lock(mutex_);
+    Statement q(db_, "INSERT OR REPLACE INTO window_state VALUES(1,?,?,?,?,?)");
+    q.integer(1, r.left);
+    q.integer(2, r.top);
+    q.integer(3, r.right);
+    q.integer(4, r.bottom);
+    q.integer(5, maximized);
+    q.row();
 }
 std::optional<uint32_t> StateStore::position(const fs::path& p, const std::string& identity) {
     std::lock_guard lock(mutex_);

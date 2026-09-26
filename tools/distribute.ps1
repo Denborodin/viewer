@@ -13,7 +13,7 @@ Get-ChildItem -LiteralPath (Join-Path $root 'tests\fixtures') -File | Copy-Item 
 foreach($name in @('dependencies.json','7zip-src.tar.xz','7zip-x64.exe','libwebp.tar.gz','libjpeg-turbo.tar.gz','libjpeg-turbo-x64.exe','zlib.tar.gz')){
  Copy-Item -LiteralPath (Join-Path $root ('third_party\'+$name)) -Destination (Join-Path $source 'third_party') -Force
 }
-Compress-Archive -LiteralPath $portable -DestinationPath (Join-Path $root 'dist\Viewer-0.1.0-win-x64.zip') -Force
-Compress-Archive -Path (Join-Path $source '*') -DestinationPath (Join-Path $root 'dist\Viewer-0.1.0-source.zip') -Force
-Get-ChildItem -LiteralPath (Join-Path $root 'dist') -Filter '*.zip' | Get-FileHash -Algorithm SHA256 | ForEach-Object {$_.Hash.ToLower()+'  '+[IO.Path]::GetFileName($_.Path)} | Set-Content -LiteralPath (Join-Path $root 'dist\SHA256SUMS.txt') -Encoding ASCII
+Compress-Archive -LiteralPath $portable -DestinationPath (Join-Path $root 'dist\Viewer-0.1.1-win-x64.zip') -Force
+Compress-Archive -Path (Join-Path $source '*') -DestinationPath (Join-Path $root 'dist\Viewer-0.1.1-source.zip') -Force
+Get-ChildItem -LiteralPath (Join-Path $root 'dist') -Filter 'Viewer-0.1.1-*.zip' | Get-FileHash -Algorithm SHA256 | ForEach-Object {$_.Hash.ToLower()+'  '+[IO.Path]::GetFileName($_.Path)} | Set-Content -LiteralPath (Join-Path $root 'dist\SHA256SUMS.txt') -Encoding ASCII
 Write-Output 'Portable and source archives created in dist.'

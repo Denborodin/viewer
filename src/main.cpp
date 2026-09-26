@@ -57,6 +57,19 @@ struct App {
     void invalidate() {
         InvalidateRect(window, nullptr, FALSE);
     }
+    int restoreWindow(int show) {
+        if (!testOutput.empty())
+            return show;
+        auto saved = state->windowPlacement();
+        if (!saved)
+            return show;
+        int restored = (int)saved->showCmd;
+        saved->showCmd = SW_HIDE; // Restore geometry before the first visible frame.
+        if (!SetWindowPlacement(window, &*saved))
+            return show;
+        // Preserve explicit hidden/minimized startup requests; restore normal/maximized launches.
+        return show == SW_SHOWNORMAL || show == SW_SHOW || show == SW_SHOWDEFAULT ? restored : show;
+    }
     void open(const fs::path& path, std::optional<uint32_t> entry = {}) {
         model.loading = true;
         model.status = L"Открытие: " + path.filename().wstring();
@@ -230,7 +243,7 @@ struct App {
             break;
         case About:
             MessageBoxW(window,
-                        L"Viewer 0.1.0\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
+                        L"Viewer 0.1.1\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
                         L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
                         L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
                         L"О Viewer", MB_OK | MB_ICONINFORMATION);
@@ -635,6 +648,16 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
         }
         case WM_DESTROY:
             app->closing = true;
+            if (app->pipeline && app->testOutput.empty()) {
+                WINDOWPLACEMENT saved{sizeof(saved)};
+                bool valid = true;
+                if (app->full)
+                    saved = app->placement;
+                else
+                    valid = GetWindowPlacement(hwnd, &saved) != FALSE;
+                if (valid)
+                    app->pipeline->rememberWindowPlacement(saved);
+            }
             app->pipeline.reset();
             if (app->shellThread.joinable())
                 app->shellThread.join();
@@ -700,7 +723,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, app.model.status.c_str(), L"Не удалось запустить Viewer", MB_OK | MB_ICONERROR);
         return 1;
     }
-    ShowWindow(hwnd, show);
+    ShowWindow(hwnd, app.restoreWindow(show));
     UpdateWindow(hwnd);
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {

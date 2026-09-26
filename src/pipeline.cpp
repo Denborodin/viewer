@@ -84,6 +84,10 @@ void ImagePipeline::configure(Settings s) {
         ++generation_;
     });
 }
+void ImagePipeline::rememberWindowPlacement(WINDOWPLACEMENT placement) {
+    std::lock_guard lock(mutex_);
+    finalWindowPlacement_ = placement;
+}
 void ImagePipeline::clearCache() {
     command([this] {
         raw_->clear();
@@ -304,6 +308,19 @@ void ImagePipeline::run() {
         completed = gen;
     }
     source_.reset();
+    // Shutdown cancels image work and discards queued commands, but must flush window state.
+    std::optional<WINDOWPLACEMENT> placement;
+    {
+        std::lock_guard lock(mutex_);
+        placement = finalWindowPlacement_;
+    }
+    if (placement) {
+        try {
+            state_->saveWindowPlacement(*placement);
+        } catch (const std::exception& ex) {
+            OutputDebugStringA(ex.what());
+        }
+    }
     decoder_.reset();
     CoUninitialize();
 }

@@ -17,6 +17,8 @@ class StateStore {
     ~StateStore();
     Settings settings();
     void saveSettings(const Settings& s);
+    std::optional<WINDOWPLACEMENT> windowPlacement();
+    void saveWindowPlacement(const WINDOWPLACEMENT& placement);
     std::optional<uint32_t> position(const fs::path& path, const std::string& identity);
     void savePosition(const fs::path& path, const std::string& identity, uint32_t id);
     bool bookmarked(const fs::path& path, uint32_t id);
