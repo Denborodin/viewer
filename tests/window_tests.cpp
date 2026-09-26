@@ -213,6 +213,56 @@ int wmain(int argc, wchar_t** argv) {
             TreeView_Expand(window.app.fileTree->handle(), folder, TVE_EXPAND);
             wait([&] { return TreeView_GetChild(window.app.fileTree->handle(), folder) != nullptr; });
             require(true, "Subfolders expand lazily");
+            auto tree = window.app.fileTree->handle();
+            auto label = [&](HTREEITEM handle) {
+                wchar_t value[256]{};
+                TVITEMW info{};
+                info.hItem = handle;
+                info.mask = TVIF_TEXT;
+                info.pszText = value;
+                info.cchTextMax = 256;
+                TreeView_GetItem(tree, &info);
+                return std::wstring(value);
+            };
+            std::vector<Entry> catalog{{7, L"Глава 2/Часть 2/2.jpg"},     {9, L"Глава 2/Часть 2/10.jpg"},
+                                       {11, L"Глава 2/Часть 2/10.jpg"},   {15, L"Глава 2/Часть 10/1.png"},
+                                       {21, L"Глава 10\\Обложки\\1.psd"}, {30, L"cover.jpg"}};
+            size_t chosen = SIZE_MAX;
+            auto select = [&](size_t index) { chosen = index; };
+            window.app.fileTree->archiveCatalog(files / L"1.zip", catalog, select);
+            window.app.fileTree->highlightArchive(1);
+            auto image = TreeView_GetSelection(tree);
+            auto part = TreeView_GetParent(tree, image);
+            auto chapter = TreeView_GetParent(tree, part);
+            auto archive = TreeView_GetParent(tree, chapter);
+            require(label(image) == L"10.jpg" && label(part) == L"Часть 2" && label(chapter) == L"Глава 2" &&
+                        label(archive) == L"1.zip",
+                    "Archive hierarchy preserves nested Unicode paths");
+            require(chosen == SIZE_MAX, "Synchronizing preview does not request another image");
+            require(label(TreeView_GetChild(tree, part)) == L"2.jpg" &&
+                        label(TreeView_GetNextSibling(tree, part)) == L"Часть 10",
+                    "Archive folders and images use natural order");
+            window.app.fileTree->highlightArchive(2);
+            auto duplicate = TreeView_GetSelection(tree);
+            require(duplicate != image && label(duplicate) == L"10.jpg",
+                    "Duplicate archive filenames retain separate entries");
+            TreeView_SelectItem(tree, image);
+            require(chosen == 1, "Archive selection uses catalog index rather than archive ID");
+            TreeView_SelectItem(tree, part);
+            require(chosen == 0, "Folder previews its first contained image");
+            window.app.fileTree->highlightArchive(4);
+            require(label(TreeView_GetParent(tree, TreeView_GetSelection(tree))) == L"Обложки",
+                    "Backslash archive paths form folders too");
+            window.app.fileTree->refresh();
+            wait([&] { return label(TreeView_GetSelection(tree)) == L"1.psd"; });
+            require(true, "Refresh restores archive hierarchy and selected image");
+            window.app.fileTree->location(files / L"2.RAR");
+            require(TreeView_GetCount(tree) == 7, "Changing archive removes stale virtual folders");
+            window.app.fileTree->location(files / L"1.zip");
+            window.app.fileTree->archiveCatalog(files / L"1.zip", catalog, select);
+            window.app.fileTree->highlightArchive(0);
+            require(label(TreeView_GetSelection(tree)) == L"2.jpg",
+                    "Previously opened archive can rebuild its folders");
             treeScreenshot(window.app.fileTree->handle(), root / L"file-tree.png");
             window.app.command(ToggleFileTree);
             require(window.app.model.treeWidth == 0, "Tree can be hidden");
@@ -222,7 +272,40 @@ int wmain(int argc, wchar_t** argv) {
             window.app.fileTree->location(files / L"Вложенная папка");
             window.close(); // Pending filesystem results must not outlive the child control.
         }
-        std::cout << "PASS " << assertions << " window placement assertions\n";
+        if (argc > 2) {
+            Window window;
+            auto waitFrame = [&] {
+                auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                do {
+                    MSG message{};
+                    while (PeekMessageW(&message, window.hwnd, WM_EVENT, WM_EVENT, PM_REMOVE))
+                        DispatchMessageW(&message);
+                    window.app.fileTree->poll();
+                    if (window.app.model.frame && !window.app.model.loading)
+                        return;
+                    Sleep(1);
+                } while (std::chrono::steady_clock::now() < deadline);
+                throw Error("Archive preview timeout");
+            };
+            window.app.open(fs::absolute(argv[2]));
+            waitFrame();
+            auto token = window.app.requestedToken;
+            size_t target = 0;
+            for (size_t i = 1; i < window.app.model.entries.size(); ++i)
+                if (window.app.model.entries[i].name.find(L'/') != std::wstring::npos ||
+                    window.app.model.entries[i].name.find(L'\\') != std::wstring::npos)
+                    target = i;
+            require(target != 0, "ZIP fixture contains nested image paths");
+            window.app.fileTree->highlightArchive(target);
+            auto tree = window.app.fileTree->handle();
+            auto image = TreeView_GetSelection(tree);
+            TreeView_SelectItem(tree, TreeView_GetParent(tree, image));
+            TreeView_SelectItem(tree, image);
+            waitFrame();
+            require(window.app.model.selected == target && window.app.requestedToken == token,
+                    "Selecting a nested ZIP image updates preview without reopening the archive");
+        }
+        std::cout << "PASS " << assertions << " window and navigation assertions\n";
         CoUninitialize();
         return 0;
     } catch (const std::exception& ex) {

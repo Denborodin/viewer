@@ -280,7 +280,7 @@ struct App {
             break;
         case About:
             MessageBoxW(window,
-                        L"Viewer 0.1.2\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
+                        L"Viewer 0.1.3\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
                         L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
                         L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
                         L"О Viewer", MB_OK | MB_ICONINFORMATION);
@@ -400,6 +400,10 @@ struct App {
             model.selected = e->index;
             model.sourceName = e->path.filename().wstring();
             SetWindowTextW(window, (model.sourceName + L" — Viewer").c_str());
+            if (fileTree && isArchive(sourcePath)) {
+                fileTree->archiveCatalog(sourcePath, model.entries, [this](size_t index) { select(index); });
+                fileTree->highlightArchive(model.selected);
+            }
             requestThumbs();
         } else if (e->type == Event::Type::FrameReady && e->generation == pipeline->generation()) {
             model.frame = std::move(e->frame);
@@ -407,6 +411,8 @@ struct App {
             model.bookmarked = e->bookmarked;
             if (fileTree && !isArchive(sourcePath) && e->index < model.entries.size())
                 fileTree->highlight(sourcePath / model.entries[e->index].name);
+            else if (fileTree && isArchive(sourcePath))
+                fileTree->highlightArchive(e->index);
             model.loading = false;
             model.status = std::to_wstring(e->index + 1) + L" / " + std::to_wstring(model.entries.size()) +
                            L"   " + model.entries[e->index].name;

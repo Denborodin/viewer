@@ -120,15 +120,15 @@ void FileTree::layout(float dpi, bool visible) {
     TreeView_SetItemHeight(tree_, int(24 * dpi));
 }
 HTREEITEM FileTree::add(HTREEITEM parent, const fs::path& path, bool directory, const std::wstring& label,
-                        bool up) {
+                        bool up, HTREEITEM after) {
     auto text = label.empty() ? path.filename().wstring() : label;
     TVINSERTSTRUCTW item{};
     item.hParent = parent;
-    item.hInsertAfter = TVI_LAST;
+    item.hInsertAfter = after;
     item.item.mask = TVIF_TEXT | TVIF_CHILDREN | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
     item.item.iImage = item.item.iSelectedImage = directory ? 0 : isArchive(path) ? 1 : 2;
     item.item.pszText = text.data();
-    item.item.cChildren = directory && !up ? 1 : 0;
+    item.item.cChildren = (directory || isArchive(path)) && !up ? 1 : 0;
     auto handle = TreeView_InsertItem(tree_, &item);
     nodes_[handle] = {path, directory, false, up};
     return handle;
@@ -142,6 +142,17 @@ void FileTree::enqueue(Request request) {
 }
 void FileTree::load(HTREEITEM handle) {
     auto it = nodes_.find(handle);
+    if (it != nodes_.end() && it->second.archiveNode) {
+        populateArchive(handle, *it->second.archiveNode);
+        return;
+    }
+    if (it != nodes_.end() && !it->second.directory && isArchive(it->second.path)) {
+        if (it->second.path == archivePath_)
+            attachArchive();
+        else
+            open_(it->second.path);
+        return;
+    }
     if (it == nodes_.end() || !it->second.directory || it->second.loaded || it->second.up)
         return;
     it->second.loaded = true;
@@ -158,6 +169,8 @@ void FileTree::root(const fs::path& path) {
     selecting_ = true;
     TreeView_DeleteAllItems(tree_);
     nodes_.clear();
+    for (auto& node : archiveNodes_)
+        node.handle = nullptr;
     root_ = path;
     if (path.has_parent_path() && path.parent_path() != path)
         add(TVI_ROOT, path.parent_path(), true, L"..  На уровень выше", true);
@@ -168,6 +181,8 @@ void FileTree::root(const fs::path& path) {
     selecting_ = false;
 }
 void FileTree::location(const fs::path& path) {
+    if (path.lexically_normal() != archivePath_)
+        clearArchive();
     current_ = path.lexically_normal();
     navDelta_ = 0;
     ++navigationId_;
@@ -180,10 +195,143 @@ void FileTree::location(const fs::path& path) {
         root(folder);
     selectCurrent();
 }
+void FileTree::clearArchive() {
+    selecting_ = true;
+    if (!archiveNodes_.empty() && archiveNodes_[0].handle) {
+        auto rootItem = archiveNodes_[0].handle;
+        auto node = nodes_.find(rootItem);
+        if (node != nodes_.end()) {
+            node->second.archiveNode.reset();
+            node->second.loaded = false;
+        }
+        for (size_t i = 1; i < archiveNodes_.size(); ++i)
+            if (archiveNodes_[i].handle)
+                nodes_.erase(archiveNodes_[i].handle);
+        while (auto child = TreeView_GetChild(tree_, rootItem))
+            TreeView_DeleteItem(tree_, child);
+        TreeView_Expand(tree_, rootItem, TVE_COLLAPSE);
+    }
+    archivePath_.clear();
+    archiveNodes_.clear();
+    archiveImages_.clear();
+    selectedArchiveImage_.reset();
+    selectArchive_ = {};
+    selecting_ = false;
+}
+void FileTree::archiveCatalog(const fs::path& archive, const std::vector<Entry>& entries,
+                              std::function<void(size_t)> select) {
+    clearArchive();
+    archivePath_ = archive;
+    selectArchive_ = std::move(select);
+    archiveNodes_.push_back({archive.filename().wstring(), L"", 0, 0, true});
+    std::unordered_map<std::wstring, size_t> folders;
+    folders[L""] = 0;
+    for (size_t index = 0; index < entries.size(); ++index) {
+        std::wstring path = entries[index].name;
+        std::replace(path.begin(), path.end(), L'\\', L'/');
+        size_t parent = 0, start = 0;
+        std::wstring prefix;
+        while (true) {
+            size_t end = path.find(L'/', start);
+            if (end == std::wstring::npos)
+                break;
+            auto name = path.substr(start, end - start);
+            start = end + 1;
+            if (name.empty())
+                continue;
+            prefix += name + L'/';
+            auto found = folders.find(prefix);
+            if (found == folders.end()) {
+                size_t id = archiveNodes_.size();
+                archiveNodes_.push_back({name, prefix, parent, index, true});
+                archiveNodes_[parent].children.push_back(id);
+                folders[prefix] = id;
+                parent = id;
+            } else
+                parent = found->second;
+        }
+        auto name = path.substr(start);
+        if (name.empty())
+            name = entries[index].name;
+        size_t id = archiveNodes_.size();
+        archiveNodes_.push_back({name, path, parent, index, false});
+        archiveNodes_[parent].children.push_back(id);
+        archiveImages_.push_back(id);
+    }
+    for (auto& node : archiveNodes_)
+        std::stable_sort(node.children.begin(), node.children.end(), [&](size_t a, size_t b) {
+            if (archiveNodes_[a].folder != archiveNodes_[b].folder)
+                return archiveNodes_[a].folder;
+            return naturalLess(archiveNodes_[a].name, archiveNodes_[b].name);
+        });
+    attachArchive();
+}
+void FileTree::attachArchive() {
+    if (archiveNodes_.empty())
+        return;
+    HTREEITEM item = archiveNodes_[0].handle;
+    if (!item)
+        for (auto& [handle, node] : nodes_)
+            if (!node.directory && !node.archiveNode && node.path == archivePath_) {
+                item = handle;
+                break;
+            }
+    if (!item)
+        return;
+    archiveNodes_[0].handle = item;
+    nodes_[item].archiveNode = 0;
+    bool previous = selecting_;
+    selecting_ = true;
+    populateArchive(item, 0);
+    TreeView_Expand(tree_, item, TVE_EXPAND);
+    selecting_ = previous;
+    if (selectedArchiveImage_)
+        highlightArchive(*selectedArchiveImage_);
+}
+void FileTree::populateArchive(HTREEITEM item, size_t id) {
+    if (nodes_[item].loaded)
+        return;
+    nodes_[item].loaded = true;
+    // Prepending in reverse order avoids walking all siblings for each insertion.
+    const auto& children = archiveNodes_[id].children;
+    for (auto child = children.rbegin(); child != children.rend(); ++child) {
+        auto& node = archiveNodes_[*child];
+        auto handle = add(item, archivePath_, node.folder, node.name, false, TVI_FIRST);
+        nodes_[handle].archiveNode = *child;
+        node.handle = handle;
+        TVITEMW info{};
+        info.mask = TVIF_CHILDREN | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
+        info.hItem = handle;
+        info.cChildren = node.folder && !node.children.empty() ? 1 : 0;
+        info.iImage = info.iSelectedImage = node.folder ? 0 : 2;
+        TreeView_SetItem(tree_, &info);
+    }
+}
+void FileTree::highlightArchive(size_t index) {
+    if (index >= archiveImages_.size())
+        return;
+    selectedArchiveImage_ = index;
+    if (!archiveNodes_[0].handle)
+        return;
+    std::vector<size_t> parents;
+    for (size_t n = archiveImages_[index]; n != 0; n = archiveNodes_[n].parent)
+        parents.push_back(archiveNodes_[n].parent);
+    bool previous = selecting_;
+    selecting_ = true;
+    for (auto it = parents.rbegin(); it != parents.rend(); ++it) {
+        auto h = archiveNodes_[*it].handle;
+        populateArchive(h, *it);
+        TreeView_Expand(tree_, h, TVE_EXPAND);
+    }
+    auto h = archiveNodes_[archiveImages_[index]].handle;
+    TreeView_SelectItem(tree_, h);
+    TreeView_EnsureVisible(tree_, h);
+    selecting_ = previous;
+}
 void FileTree::selectCurrent() {
     selecting_ = true;
     for (auto& [handle, node] : nodes_)
-        if (!node.up && lower(node.path.wstring()) == lower(current_.wstring())) {
+        if (!node.up && !node.archiveNode && lower(node.path.wstring()) == lower(current_.wstring())) {
             TreeView_SelectItem(tree_, handle);
             TreeView_EnsureVisible(tree_, handle);
             break;
@@ -225,8 +373,12 @@ LRESULT FileTree::notify(NMHDR* hdr) {
     if (hdr->code == TVN_GETINFOTIPW) {
         auto tip = (NMTVGETINFOTIPW*)hdr;
         auto it = nodes_.find(tip->hItem);
-        if (it != nodes_.end())
-            wcsncpy_s(tip->pszText, tip->cchTextMax, it->second.path.c_str(), _TRUNCATE);
+        if (it != nodes_.end()) {
+            auto label = it->second.path.wstring();
+            if (it->second.archiveNode)
+                label += L" / " + archiveNodes_[*it->second.archiveNode].internalPath;
+            wcsncpy_s(tip->pszText, tip->cchTextMax, label.c_str(), _TRUNCATE);
+        }
         return 0;
     }
     if (hdr->hwndFrom != tree_ || selecting_)
@@ -242,6 +394,14 @@ LRESULT FileTree::notify(NMHDR* hdr) {
         if (it == nodes_.end())
             return 0;
         auto node = it->second;
+        if (node.archiveNode) {
+            size_t id = *node.archiveNode;
+            if (archiveNodes_[id].folder)
+                populateArchive(n->itemNew.hItem, id);
+            if (selectArchive_ && !archiveImages_.empty())
+                selectArchive_(archiveNodes_[id].firstImage);
+            return 0;
+        }
         if (node.up) {
             root(node.path);
             return 0;
@@ -293,6 +453,7 @@ void FileTree::poll() {
         }
         selecting_ = false;
         selectCurrent();
+        attachArchive();
     }
 }
 void FileTree::run() {
