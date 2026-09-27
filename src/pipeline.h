@@ -13,6 +13,7 @@ struct Event {
     std::wstring message;
     std::vector<Bookmark> bookmarks;
     bool bookmarked = false;
+    fs::path previousArchive, nextArchive;
 };
 class ImagePipeline {
   public:
@@ -51,6 +52,7 @@ class ImagePipeline {
     std::optional<WINDOWPLACEMENT> finalWindowPlacement_;
     std::atomic<bool> stopping_ = false;
     std::atomic<uint64_t> generation_{0}, sourceToken_{0};
+    std::atomic<uint64_t> cancelSerial_{0};
     fs::path pendingPath_;
     bool opening_ = false, paused_ = false;
     std::optional<uint32_t> openingEntry_;

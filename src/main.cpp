@@ -78,11 +78,14 @@ struct App {
         return show == SW_SHOWNORMAL || show == SW_SHOW || show == SW_SHOWDEFAULT ? restored : show;
     }
     void open(const fs::path& path, std::optional<uint32_t> entry = {}) {
-        currentPath = firstArchiveVolume(fs::absolute(path).lexically_normal());
+        auto requestedPath = fs::absolute(path).lexically_normal();
+        auto rootPath = sourceRootPath(requestedPath);
+        currentPath = firstArchiveVolume(rootPath);
         if (fileTree)
             fileTree->location(currentPath);
         model.loading = true;
-        model.status = L"Открытие: " + path.filename().wstring();
+        model.status = requestedPath == rootPath ? L"Открытие: " + path.filename().wstring()
+                                                 : L"Открытие вложенного архива…";
         model.thumbs.clear();
         model.entries.clear();
         model.thumbFirst = 0;
@@ -90,7 +93,7 @@ struct App {
         model.fit = true;
         model.panX = model.panY = 0;
         decodeSize();
-        requestedToken = pipeline->open(currentPath, entry);
+        requestedToken = pipeline->open(requestedPath == rootPath ? currentPath : requestedPath, entry);
         invalidate();
     }
     void layoutTree() {
@@ -99,7 +102,15 @@ struct App {
         if (fileTree)
             fileTree->layout(model.dpi, visible);
     }
+    fs::path previousNestedArchive, nextNestedArchive;
     void archive(int direction) {
+        if (!sourcePath.empty() && sourceRootPath(sourcePath) != sourcePath &&
+            sourceRootPath(sourcePath) == currentPath) {
+            auto target = direction < 0 ? previousNestedArchive : nextNestedArchive;
+            if (!target.empty())
+                open(target);
+            return;
+        }
         if (fileTree)
             fileTree->jump(currentPath, direction);
     }
@@ -143,6 +154,10 @@ struct App {
     void select(size_t index, int direction = 1) {
         if (index >= model.entries.size())
             return;
+        if (model.entries[index].archive) {
+            open(nestedSourcePath(sourcePath, model.entries[index]));
+            return;
+        }
         model.selected = index;
         model.loading = true;
         model.status = std::to_wstring(index + 1) + L" / " + std::to_wstring(model.entries.size()) + L"   " +
@@ -281,7 +296,7 @@ struct App {
         case About:
             MessageBoxW(
                 window,
-                L"Viewer 0.1.4\nНативный просмотр изображений, ZIP, RAR и 7z.\n\nF11 — полный экран · "
+                L"Viewer 0.1.5\nНативный просмотр изображений, ZIP, RAR и 7z.\n\nF11 — полный экран · "
                 L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
                 L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
                 L"О Viewer", MB_OK | MB_ICONINFORMATION);
@@ -375,7 +390,10 @@ struct App {
             if (bookmarks.empty())
                 AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"Закладок пока нет — Ctrl+B");
             for (size_t i = 0; i < std::min<size_t>(bookmarks.size(), 300); ++i) {
-                auto label = fs::path(bookmarks[i].path).filename().wstring() + L" / " + bookmarks[i].name;
+                auto label =
+                    sourceRootPath(bookmarks[i].path) != fs::path(bookmarks[i].path)
+                        ? bookmarks[i].name
+                        : fs::path(bookmarks[i].path).filename().wstring() + L" / " + bookmarks[i].name;
                 std::wstring escaped;
                 for (auto c : label) {
                     escaped += c;
@@ -397,15 +415,30 @@ struct App {
             return;
         if (e->type == Event::Type::Opened) {
             sourcePath = e->path;
+            previousNestedArchive = e->previousArchive;
+            nextNestedArchive = e->nextArchive;
+            currentPath = firstArchiveVolume(sourceRootPath(sourcePath));
+            if (fileTree)
+                fileTree->location(currentPath);
             model.entries = std::move(e->entries);
             model.selected = e->index;
-            model.sourceName = e->path.filename().wstring();
+            model.sourceName = e->message.empty() ? e->path.filename().wstring() : e->message;
             SetWindowTextW(window, (model.sourceName + L" — Viewer").c_str());
             if (fileTree && isArchive(sourcePath)) {
-                fileTree->archiveCatalog(sourcePath, model.entries, [this](size_t index) { select(index); });
+                fileTree->archiveCatalog(
+                    currentPath, model.entries, [this](size_t index) { select(index); },
+                    sourcePath != currentPath
+                        ? std::function<void()>([this] { open(sourcePath.parent_path()); })
+                        : std::function<void()>(),
+                    model.sourceName);
                 fileTree->highlightArchive(model.selected);
             }
             requestThumbs();
+            if (std::all_of(model.entries.begin(), model.entries.end(),
+                            [](const Entry& entry) { return entry.archive; })) {
+                settings.fileTree = true;
+                layoutTree();
+            }
         } else if (e->type == Event::Type::FrameReady && e->generation == pipeline->generation()) {
             model.frame = std::move(e->frame);
             model.selected = e->index;
@@ -417,6 +450,8 @@ struct App {
             model.loading = false;
             model.status = std::to_wstring(e->index + 1) + L" / " + std::to_wstring(model.entries.size()) +
                            L"   " + model.entries[e->index].name;
+            if (model.entries[e->index].archive)
+                model.status = L"Выберите вложенный архив в дереве файлов";
             if (!e->message.empty())
                 model.status += L" · " + e->message;
             decodeSize();
@@ -591,6 +626,12 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
                 app->archive(1);
             else if (wp == VK_PRIOR)
                 app->archive(-1);
+            else if (wp == VK_BACK && !app->sourcePath.empty() &&
+                     sourceRootPath(app->sourcePath) != app->sourcePath)
+                app->open(app->sourcePath.parent_path());
+            else if (wp == VK_RETURN && app->model.selected < app->model.entries.size() &&
+                     app->model.entries[app->model.selected].archive)
+                app->select(app->model.selected);
             else if (wp == VK_F9)
                 app->command(ToggleFileTree);
             else if (wp == VK_F5 && app->fileTree)

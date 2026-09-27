@@ -323,6 +323,55 @@ int wmain(int argc, wchar_t** argv) {
                             window.app.sourcePath == window.app.currentPath,
                         "Viewer opens 7z and normalizes selected volume for tree and preview");
             }
+            auto waitLoaded = [&] {
+                auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                do {
+                    MSG message{};
+                    while (PeekMessageW(&message, window.hwnd, WM_EVENT, WM_EVENT, PM_REMOVE))
+                        DispatchMessageW(&message);
+                    window.app.fileTree->poll();
+                    if (!window.app.model.loading)
+                        return;
+                    Sleep(1);
+                } while (std::chrono::steady_clock::now() < deadline);
+                throw Error("Nested gallery timeout");
+            };
+            window.app.open(fs::absolute(argv[2]).parent_path() / L"nested.7z.003");
+            waitLoaded();
+            require(window.app.model.entries.size() == 4 && !window.app.model.frame,
+                    "Archive-only container shows gallery catalog without image errors");
+            window.app.fileTree->highlightArchive(0);
+            SendMessageW(tree, WM_KEYDOWN, VK_RETURN, 0);
+            waitFrame();
+            require(window.app.model.entries.size() == 14 &&
+                        window.app.sourcePath != window.app.currentPath &&
+                        window.app.model.sourceName.find(L"2.zip") != std::wstring::npos,
+                    "Enter opens selected inner ZIP from native tree");
+            treeScreenshot(tree, root / L"nested-tree.png");
+            window.app.renderer->snapshot(window.app.model, root / L"nested-preview.png");
+            auto address = window.app.sourcePath;
+            SendMessageW(tree, WM_KEYDOWN, VK_NEXT, 0);
+            waitFrame();
+            require(window.app.model.sourceName.find(L"10.zip") != std::wstring::npos,
+                    "Page Down switches sibling ZIP galleries inside the outer archive");
+            SendMessageW(tree, WM_KEYDOWN, VK_PRIOR, 0);
+            waitFrame();
+            require(window.app.sourcePath == address, "Page Up returns to previous nested gallery");
+            SendMessageW(tree, WM_KEYDOWN, VK_BACK, 0);
+            waitLoaded();
+            require(window.app.model.entries.size() == 4 && window.app.sourcePath == window.app.currentPath,
+                    "Backspace returns to outer gallery catalog");
+            window.app.select(2); // broken.zip
+            waitLoaded();
+            require(window.app.model.entries.size() == 4 && window.app.sourcePath == window.app.currentPath,
+                    "Damaged gallery restores parent navigation");
+            window.app.select(1);
+            waitFrame();
+            require(window.app.model.sourceName.find(L"10.zip") != std::wstring::npos,
+                    "Another gallery opens after inner-archive failure");
+            window.app.open(address);
+            waitFrame();
+            require(window.app.sourcePath == address, "Nested bookmark address reopens correct gallery");
         }
         std::cout << "PASS " << assertions << " window and navigation assertions\n";
         CoUninitialize();

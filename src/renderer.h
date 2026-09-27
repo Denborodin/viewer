@@ -38,6 +38,7 @@ class Renderer {
     };
     std::vector<Tile> tiles_;
     const Frame* uploaded_ = nullptr;
+    std::weak_ptr<Frame> uploadedOwner_;
     float fontDpi_ = 0;
     std::unordered_map<size_t, std::pair<std::weak_ptr<Frame>, ComPtr<ID2D1Bitmap>>> thumbBitmaps_;
     void ensure();

@@ -34,3 +34,24 @@ for($i=0;$i -lt $parts;$i++){
 $last=[byte[]]::new($bytes.Length-$central)
 [Array]::Copy($bytes,$central,$last,0,$last.Length)
 [IO.File]::WriteAllBytes((Join-Path $out 'disk.zip'),$last)
+$nested=Join-Path $out 'nested-input\galleries'
+New-Item -ItemType Directory -Force -Path $nested | Out-Null
+Copy-Item -LiteralPath (Join-Path $out 'stored.zip') -Destination (Join-Path $nested '2.zip') -Force
+Copy-Item -LiteralPath (Join-Path $out 'deflate.zip') -Destination (Join-Path $nested '10.zip') -Force
+Copy-Item -LiteralPath (Join-Path $out 'broken.zip') -Destination (Join-Path $nested 'broken.zip') -Force
+Copy-Item -LiteralPath (Join-Path $out 'plain.7z') -Destination (Join-Path $nested 'inner.7z') -Force
+Get-ChildItem -LiteralPath $out -File -Filter 'nested.7z.*' | ForEach-Object {Remove-Item -LiteralPath $_.FullName}
+& $seven a (Join-Path $out 'nested.7z') $nested '-mx=0' '-v32k' '-bso0' '-bsp0'
+if($LASTEXITCODE){throw 'Nested fixture creation failed'}
+$rarZip=Join-Path $out 'nested-rar.zip'
+if(Test-Path -LiteralPath $rarZip){Remove-Item -LiteralPath $rarZip}
+& $seven a $rarZip (Join-Path $out 'rar4.rar') '-mx=0' '-bso0' '-bsp0'
+if($LASTEXITCODE){throw 'Nested RAR fixture creation failed'}
+$previous=Join-Path $out 'images\1.png'
+for($level=1;$level -le 5;$level++){
+ $target=Join-Path $out ('depth'+$level+'.zip')
+ if(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target}
+ & $seven a $target $previous '-mx=0' '-bso0' '-bsp0'
+ if($LASTEXITCODE){throw 'Depth fixture creation failed'}
+ $previous=$target
+}

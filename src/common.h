@@ -58,6 +58,7 @@ struct Entry {
     uint64_t size = 0;
     uint32_t block = 0;
     bool solid = false;
+    bool archive = false;
 };
 struct Settings {
     uint64_t ramBytes = 512 * MiB, diskBytes = 2048 * MiB, gpuBytes = 256 * MiB;

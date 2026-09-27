@@ -97,6 +97,7 @@ void ImagePipeline::clearCache() {
     });
 }
 void ImagePipeline::cancel() {
+    ++cancelSerial_;
     {
         std::lock_guard lock(mutex_);
         paused_ = true;
@@ -118,7 +119,8 @@ void ImagePipeline::toggleBookmark() {
         if (!source_ || wanted >= source_->entries().size())
             return;
         const auto& e = source_->entries()[wanted];
-        state_->toggleBookmark({source_->path().wstring(), e.name, e.id});
+        auto label = source_->displayName().empty() ? e.name : source_->displayName() + L" / " + e.name;
+        state_->toggleBookmark({source_->path().wstring(), label, e.id});
         Event event{Event::Type::Notice};
         event.message =
             state_->bookmarked(source_->path(), e.id) ? L"Закладка добавлена" : L"Закладка удалена";
@@ -141,6 +143,8 @@ void ImagePipeline::emit(Event e) {
 std::shared_ptr<Frame> ImagePipeline::image(size_t index, uint32_t w, uint32_t h, const Cancel& cancel,
                                             bool cacheOnly) {
     const auto& entry = source_->entries().at(index);
+    if (entry.archive)
+        return {};
     std::string key = source_->version(entry.id) + ":" + std::to_string(entry.id) +
                       (w <= 256 && h <= 256 ? ":thumb" : ":image");
     auto found = decoded_.find(key);
@@ -214,16 +218,23 @@ void ImagePipeline::run() {
             for (auto& fn : commands)
                 fn();
             if (open) {
-                source_.reset();
                 decoded_.clear();
                 decodedBytes_ = 0;
-                source_ = openSource(path, raw_, metrics_,
-                                     [this, token] { return stopping_ || sourceToken_ != token; });
+                const auto openingCancel = cancelSerial_.load();
+                auto opened = openSource(path, raw_, metrics_, [this, token, openingCancel] {
+                    return stopping_ || sourceToken_ != token || cancelSerial_ != openingCancel;
+                });
+                if (opened->entries().empty())
+                    throw Error("В выбранном источнике нет изображений или вложенных архивов");
+                source_ = std::move(opened);
                 localSource = token;
-                if (source_->entries().empty())
-                    throw Error("В выбранном источнике нет поддерживаемых изображений");
                 auto saved = initial ? initial : state_->position(source_->path(), source_->identity());
                 index = 0;
+                for (size_t i = 0; i < source_->entries().size(); ++i)
+                    if (!source_->entries()[i].archive) {
+                        index = i;
+                        break;
+                    }
                 for (size_t i = 0; i < source_->entries().size(); ++i) {
                     const auto& e = source_->entries()[i];
                     if ((saved && e.id == *saved) ||
@@ -245,6 +256,9 @@ void ImagePipeline::run() {
                 e.index = index;
                 e.path = source_->path();
                 e.entries = source_->entries();
+                e.message = source_->displayName();
+                e.previousArchive = source_->previousArchive();
+                e.nextArchive = source_->nextArchive();
                 emit(std::move(e));
             }
             if (!paused && source_ && localSource == token && index < source_->entries().size() &&
@@ -296,8 +310,41 @@ void ImagePipeline::run() {
                 }
             }
         } catch (const Cancelled&) {
+            if (open && source_ && !stopping_ && sourceToken_ == token) {
+                localSource = token;
+                Event restored{Event::Type::Opened};
+                restored.generation = generation_;
+                restored.sourceToken = token;
+                restored.path = source_->path();
+                restored.entries = source_->entries();
+                restored.message = source_->displayName();
+                restored.previousArchive = source_->previousArchive();
+                restored.nextArchive = source_->nextArchive();
+                {
+                    std::lock_guard lock(mutex_);
+                    wanted_ = 0;
+                }
+                emit(std::move(restored));
+            }
         } catch (const std::exception& ex) {
             if (!cancel()) {
+                if (open && source_) {
+                    // A damaged nested gallery must not strand the parent gallery browser.
+                    localSource = token;
+                    Event restored{Event::Type::Opened};
+                    restored.generation = gen;
+                    restored.sourceToken = token;
+                    restored.path = source_->path();
+                    restored.entries = source_->entries();
+                    restored.message = source_->displayName();
+                    restored.previousArchive = source_->previousArchive();
+                    restored.nextArchive = source_->nextArchive();
+                    {
+                        std::lock_guard lock(mutex_);
+                        wanted_ = 0;
+                    }
+                    emit(std::move(restored));
+                }
                 Event e{Event::Type::Error};
                 e.generation = gen;
                 e.sourceToken = token;

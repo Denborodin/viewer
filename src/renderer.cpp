@@ -138,8 +138,10 @@ void Renderer::draw(const ViewModel& m) {
     }
     auto size = target_->GetSize();
     auto v = viewport(m);
-    if (m.frame && uploaded_ != m.frame.get())
+    if (m.frame && (uploaded_ != m.frame.get() || uploadedOwner_.expired())) {
         upload(*m.frame);
+        uploadedOwner_ = m.frame;
+    }
     target_->BeginDraw();
     target_->SetTransform(D2D1::Matrix3x2F::Identity());
     target_->Clear(color(0x111318));
@@ -169,7 +171,8 @@ void Renderer::draw(const ViewModel& m) {
     } else {
         text(L"Viewer", D2D1::RectF(v.left + 40 * m.dpi, v.top + 60 * m.dpi, v.right, v.top + 110 * m.dpi),
              color(0xf2f5fa), large_.Get());
-        text(L"Перетащите сюда архив, папку или изображение",
+        text(m.entries.empty() ? L"Перетащите сюда архив, папку или изображение"
+                               : L"Выберите галерею в дереве файлов · Enter — открыть",
              D2D1::RectF(v.left + 40 * m.dpi, v.top + 115 * m.dpi, v.right, v.top + 155 * m.dpi),
              color(0x929dad));
         text(L"ZIP · RAR · JPEG · PNG · WebP · BMP · GIF · TIFF",
@@ -218,6 +221,11 @@ void Renderer::draw(const ViewModel& m) {
                                                     (m.treeWidth + v.left + w) / 2, y + 12 * m.dpi + h));
                 }
             }
+            if (m.entries[i].archive)
+                text(L"Архив",
+                     D2D1::RectF(rect.left + 12 * m.dpi, y + 40 * m.dpi, rect.right - 12 * m.dpi,
+                                 y + 80 * m.dpi),
+                     color(0xbdc7d6));
             text(std::to_wstring(i + 1) + L"  " + fs::path(m.entries[i].name).filename().wstring(),
                  D2D1::RectF(m.treeWidth + 16 * m.dpi, y + 117 * m.dpi, v.left - 12 * m.dpi, y + 140 * m.dpi),
                  color(0xbdc7d6), small_.Get());

@@ -90,12 +90,16 @@ FileTree::~FileTree() {
 }
 LRESULT CALLBACK FileTree::subclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR data) {
     auto self = (FileTree*)data;
+    if (msg == WM_KEYDOWN && wp == VK_RETURN) {
+        self->activateArchiveSelection();
+        return 0;
+    }
     if (msg == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000) && (wp == 'O' || wp == 'B')) {
         SendMessageW(self->parent_, msg, wp, lp);
         return 0;
     }
-    if (msg == WM_KEYDOWN &&
-        (wp == VK_PRIOR || wp == VK_NEXT || wp == VK_F11 || wp == VK_F9 || wp == VK_ESCAPE)) {
+    if (msg == WM_KEYDOWN && (wp == VK_PRIOR || wp == VK_NEXT || wp == VK_F11 || wp == VK_F9 ||
+                              wp == VK_ESCAPE || wp == VK_BACK)) {
         SendMessageW(self->parent_, msg, wp, lp);
         return 0;
     }
@@ -212,20 +216,29 @@ void FileTree::clearArchive() {
         while (auto child = TreeView_GetChild(tree_, rootItem))
             TreeView_DeleteItem(tree_, child);
         TreeView_Expand(tree_, rootItem, TVE_COLLAPSE);
+        auto text = archivePath_.filename().wstring();
+        TVITEMW info{};
+        info.mask = TVIF_TEXT;
+        info.hItem = rootItem;
+        info.pszText = text.data();
+        TreeView_SetItem(tree_, &info);
     }
     archivePath_.clear();
     archiveNodes_.clear();
     archiveImages_.clear();
     selectedArchiveImage_.reset();
     selectArchive_ = {};
+    backArchive_ = {};
     selecting_ = false;
 }
 void FileTree::archiveCatalog(const fs::path& archive, const std::vector<Entry>& entries,
-                              std::function<void(size_t)> select) {
+                              std::function<void(size_t)> select, std::function<void()> back,
+                              std::wstring label) {
     clearArchive();
     archivePath_ = archive;
     selectArchive_ = std::move(select);
-    archiveNodes_.push_back({archive.filename().wstring(), L"", 0, 0, true});
+    backArchive_ = std::move(back);
+    archiveNodes_.push_back({label.empty() ? archive.filename().wstring() : label, L"", 0, 0, true});
     std::unordered_map<std::wstring, size_t> folders;
     folders[L""] = 0;
     for (size_t index = 0; index < entries.size(); ++index) {
@@ -257,11 +270,19 @@ void FileTree::archiveCatalog(const fs::path& archive, const std::vector<Entry>&
             name = entries[index].name;
         size_t id = archiveNodes_.size();
         archiveNodes_.push_back({name, path, parent, index, false});
+        archiveNodes_.back().archive = entries[index].archive;
         archiveNodes_[parent].children.push_back(id);
         archiveImages_.push_back(id);
     }
+    if (backArchive_) {
+        archiveNodes_[0].children.push_back(archiveNodes_.size());
+        archiveNodes_[0].firstImage = SIZE_MAX;
+        archiveNodes_.push_back({L"..  Назад к внешнему архиву", L"", 0, SIZE_MAX, true});
+    }
     for (auto& node : archiveNodes_)
         std::stable_sort(node.children.begin(), node.children.end(), [&](size_t a, size_t b) {
+            if ((archiveNodes_[a].firstImage == SIZE_MAX) != (archiveNodes_[b].firstImage == SIZE_MAX))
+                return archiveNodes_[a].firstImage == SIZE_MAX;
             if (archiveNodes_[a].folder != archiveNodes_[b].folder)
                 return archiveNodes_[a].folder;
             return naturalLess(archiveNodes_[a].name, archiveNodes_[b].name);
@@ -282,6 +303,11 @@ void FileTree::attachArchive() {
         return;
     archiveNodes_[0].handle = item;
     nodes_[item].archiveNode = 0;
+    TVITEMW info{};
+    info.mask = TVIF_TEXT;
+    info.hItem = item;
+    info.pszText = archiveNodes_[0].name.data();
+    TreeView_SetItem(tree_, &info);
     bool previous = selecting_;
     selecting_ = true;
     populateArchive(item, 0);
@@ -305,7 +331,7 @@ void FileTree::populateArchive(HTREEITEM item, size_t id) {
         info.mask = TVIF_CHILDREN | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
         info.hItem = handle;
         info.cChildren = node.folder && !node.children.empty() ? 1 : 0;
-        info.iImage = info.iSelectedImage = node.folder ? 0 : 2;
+        info.iImage = info.iSelectedImage = node.folder ? 0 : node.archive ? 1 : 2;
         TreeView_SetItem(tree_, &info);
     }
 }
@@ -356,9 +382,26 @@ void FileTree::jump(const fs::path& current, int delta) {
     auto folder = isArchive(current) || isImage(current) ? current.parent_path() : current;
     enqueue({folder, nullptr, generation_, true, ++navigationId_});
 }
+void FileTree::activateArchiveSelection() {
+    auto it = nodes_.find(TreeView_GetSelection(tree_));
+    if (it == nodes_.end() || !it->second.archiveNode)
+        return;
+    const auto& node = archiveNodes_[*it->second.archiveNode];
+    if (node.archive && selectArchive_)
+        selectArchive_(node.firstImage);
+}
 LRESULT FileTree::notify(NMHDR* hdr) {
     if (hdr->hwndFrom != tree_)
         return 0;
+    if (hdr->code == NM_CLICK && !selecting_) {
+        DWORD pos = GetMessagePos();
+        TVHITTESTINFO hit{};
+        hit.pt = {static_cast<short>(LOWORD(pos)), static_cast<short>(HIWORD(pos))};
+        ScreenToClient(tree_, &hit.pt);
+        TreeView_HitTest(tree_, &hit);
+        if ((hit.flags & (TVHT_ONITEMLABEL | TVHT_ONITEMICON)) && hit.hItem == TreeView_GetSelection(tree_))
+            activateArchiveSelection();
+    }
     if (hdr->code == NM_CUSTOMDRAW) {
         auto draw = (NMTVCUSTOMDRAW*)hdr;
         if (draw->nmcd.dwDrawStage == CDDS_PREPAINT)
@@ -398,6 +441,11 @@ LRESULT FileTree::notify(NMHDR* hdr) {
         auto node = it->second;
         if (node.archiveNode) {
             size_t id = *node.archiveNode;
+            if (archiveNodes_[id].firstImage == SIZE_MAX) {
+                if (backArchive_)
+                    backArchive_();
+                return 0;
+            }
             if (archiveNodes_[id].folder)
                 populateArchive(n->itemNew.hItem, id);
             if (selectArchive_ && !archiveImages_.empty())

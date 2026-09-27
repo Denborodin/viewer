@@ -28,10 +28,11 @@ class FileStream final : public SevenObject<IInStream> {
     Cancel cancel_;
 
   public:
-    FileStream(const fs::path& p, std::shared_ptr<Metrics> m, Cancel cancel)
+    FileStream(const fs::path& p, std::shared_ptr<Metrics> m, Cancel cancel, bool temporary = false)
         : metrics_(std::move(m)), cancel_(std::move(cancel)) {
-        file_ = CreateFileW(p.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                            FILE_ATTRIBUTE_NORMAL, nullptr);
+        file_ = CreateFileW(p.c_str(), GENERIC_READ,
+                            FILE_SHARE_READ | FILE_SHARE_DELETE | (temporary ? FILE_SHARE_WRITE : 0), nullptr,
+                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file_ == INVALID_HANDLE_VALUE)
             throw Error(utf8(winError(GetLastError())));
     }
@@ -243,6 +244,123 @@ struct Property {
         return p.vt == VT_BSTR && p.bstrVal ? p.bstrVal : L"";
     }
 };
+struct NestedFile {
+    fs::path path;
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    NestedFile() {
+        auto dir = dataDirectory() / L"nested";
+        fs::create_directories(dir);
+        GUID guid{};
+        check(CoCreateGuid(&guid), "Temporary archive name");
+        wchar_t name[40]{};
+        StringFromGUID2(guid, name, 40);
+        path = dir / (std::wstring(name) + L".tmp");
+        handle =
+            CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE,
+                        nullptr, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            throw Error("Не удалось создать временный файл вложенного архива");
+    }
+    ~NestedFile() {
+        if (handle != INVALID_HANDLE_VALUE)
+            CloseHandle(handle);
+        DeleteFileW(path.c_str());
+    }
+};
+class NestedOutput final : public SevenObject<ISequentialOutStream> {
+    std::shared_ptr<NestedFile> file_;
+    Cancel cancel_;
+
+  public:
+    uint64_t size = 0;
+    static constexpr uint64_t limit = 2048 * MiB;
+    NestedOutput(std::shared_ptr<NestedFile> file, Cancel cancel)
+        : file_(std::move(file)), cancel_(std::move(cancel)) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) noexcept override {
+        *out = nullptr;
+        if (iid != IID_IUnknown && iid != IID_ISequentialOutStream)
+            return E_NOINTERFACE;
+        *out = static_cast<ISequentialOutStream*>(this);
+        AddRef();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Write(const void* data, UInt32 bytes, UInt32* processed) noexcept override {
+        if (processed)
+            *processed = 0;
+        if (cancel_ && cancel_())
+            return E_ABORT;
+        if (bytes > limit - size)
+            return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+        DWORD n = 0;
+        if (!WriteFile(file_->handle, data, bytes, &n, nullptr))
+            return HRESULT_FROM_WIN32(GetLastError());
+        size += n;
+        if (processed)
+            *processed = n;
+        return n == bytes ? S_OK : HRESULT_FROM_WIN32(ERROR_DISK_FULL);
+    }
+};
+class NestedCallback final : public SevenObject<IArchiveExtractCallback>,
+                             public IArchiveRequestMemoryUseCallback {
+    uint32_t id_;
+    ComPtr<NestedOutput> output_;
+    Cancel cancel_;
+
+  public:
+    bool complete = false;
+    NestedCallback(uint32_t id, NestedOutput* output, Cancel cancel)
+        : id_(id), output_(output), cancel_(std::move(cancel)) {}
+    ULONG STDMETHODCALLTYPE AddRef() noexcept override {
+        return SevenObject::AddRef();
+    }
+    ULONG STDMETHODCALLTYPE Release() noexcept override {
+        return SevenObject::Release();
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) noexcept override {
+        *out = nullptr;
+        if (iid == IID_IUnknown || iid == IID_IArchiveExtractCallback || iid == IID_IProgress)
+            *out = static_cast<IArchiveExtractCallback*>(this);
+        else if (iid == IID_IArchiveRequestMemoryUseCallback)
+            *out = static_cast<IArchiveRequestMemoryUseCallback*>(this);
+        else
+            return E_NOINTERFACE;
+        AddRef();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetStream(UInt32 id, ISequentialOutStream** stream,
+                                        Int32 mode) noexcept override {
+        *stream = nullptr;
+        if (cancel_ && cancel_())
+            return E_ABORT;
+        if (id == id_ && mode == NArchive::NExtract::NAskMode::kExtract) {
+            *stream = output_.Get();
+            (*stream)->AddRef();
+        }
+        active_ = id;
+        return S_OK;
+    }
+    uint32_t active_ = UINT32_MAX;
+    HRESULT STDMETHODCALLTYPE PrepareOperation(Int32) noexcept override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetOperationResult(Int32 result) noexcept override {
+        if (active_ == id_)
+            complete = result == NArchive::NExtract::NOperationResult::kOK;
+        return cancel_ && cancel_() ? E_ABORT : S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetTotal(UInt64) noexcept override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetCompleted(const UInt64*) noexcept override {
+        return cancel_ && cancel_() ? E_ABORT : S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE RequestMemoryUse(UInt32, UInt32, UInt32, const wchar_t*, UInt64 size,
+                                               UInt64* allowed, UInt32* answer) noexcept override {
+        *allowed = std::min<uint64_t>(physicalMemory() / 4, 1024 * MiB);
+        *answer = size <= *allowed ? NRequestMemoryAnswerFlags::k_Allow : NRequestMemoryAnswerFlags::k_Stop;
+        return S_OK;
+    }
+};
 class ArchiveSource;
 class Output final : public SevenObject<ISequentialOutStream> {
   public:
@@ -318,6 +436,10 @@ class ArchiveSource final : public IImageSource {
     ComPtr<IInStream> file_;
     ComPtr<VolumeCallback> volumes_;
     std::vector<fs::path> volumePaths_;
+    std::shared_ptr<NestedFile> nestedFile_;
+    std::function<std::string()> rootVersion_;
+    std::string rootIdentity_;
+    std::mutex handlerMutex_;
     std::string volumeVersion() const {
         // Keep existing cache and saved-position keys for ordinary single-file archives.
         if (volumePaths_.size() == 1)
@@ -344,7 +466,7 @@ class ArchiveSource final : public IImageSource {
     Cancel openingCancel_;
     bool opening_ = true;
     ArchiveSource(const fs::path& p, std::shared_ptr<RawCache> cache, std::shared_ptr<Metrics> metrics,
-                  const Cancel& cancel)
+                  const Cancel& cancel, bool temporary = false)
         : cache_(std::move(cache)), metrics_(std::move(metrics)), openingCancel_(cancel) {
         path_ = p;
         module_ = LoadLibraryExW((executablePath().parent_path() / L"7z.dll").c_str(), nullptr,
@@ -387,7 +509,7 @@ class ArchiveSource final : public IImageSource {
                     throw Error("Отсутствует первый том: " + utf8(p.filename().wstring()));
                 file_.Attach(new SplitStream(volumePaths_, metrics_, stopped));
             } else {
-                file_.Attach(new FileStream(p, metrics_, stopped));
+                file_.Attach(new FileStream(p, metrics_, stopped, temporary));
             }
             uint8_t signature[8]{};
             UInt32 n = 0;
@@ -447,11 +569,14 @@ class ArchiveSource final : public IImageSource {
                     blockSolid_[block] = true;
                 if (enc.boolean())
                     throw Error("Архивы с паролем пока не поддерживаются");
-                if (!link.string().empty() || alt.boolean() || !isImage(fs::path(name.string())))
+                auto entryPath = fs::path(name.string());
+                auto extension = lower(entryPath.extension().wstring());
+                bool nestedArchive = extension == L".zip" || extension == L".rar" || extension == L".7z";
+                if (!link.string().empty() || alt.boolean() || (!isImage(entryPath) && !nestedArchive))
                     continue;
                 auto entryName = name.string();
                 std::replace(entryName.begin(), entryName.end(), L'\\', L'/');
-                Entry e{i, std::move(entryName), size.number(), block, solid.boolean()};
+                Entry e{i, std::move(entryName), size.number(), block, solid.boolean(), nestedArchive};
                 entries_.push_back(e);
                 byId_[i] = e;
                 blocks_[block].push_back(i);
@@ -502,6 +627,11 @@ class ArchiveSource final : public IImageSource {
         return i != byId_.end() && blockSolid_.contains(i->second.block) && blockSolid_.at(i->second.block);
     }
     std::string version(uint32_t) const override {
+        if (rootVersion_) {
+            if (rootVersion_() != rootIdentity_)
+                throw Error("Внешний архив изменён. Откройте его заново.");
+            return identity_;
+        }
         if (volumeVersion() != identity_)
             throw Error("Архив изменён. Откройте его заново.");
         return identity_;
@@ -509,7 +639,82 @@ class ArchiveSource final : public IImageSource {
     BytePtr cached(uint32_t id) override {
         return cache_->get(identity_, id);
     }
+    std::unique_ptr<IImageSource> nested(uint32_t id, const Cancel& cancelled) override {
+        if (!byId_.contains(id) || !byId_.at(id).archive)
+            throw Error("Вложенный архив отсутствует");
+        const auto entry = byId_.at(id);
+        if (entry.size > NestedOutput::limit)
+            throw Error("Вложенный архив превышает лимит 2 ГиБ");
+        auto parentVersion = version(id);
+        cancel();
+        {
+            std::unique_lock lock(mutex_);
+            while (inSession_) {
+                if (cancelled && cancelled())
+                    throw Cancelled();
+                cv_.wait_for(lock, std::chrono::milliseconds(20));
+            }
+        }
+        if (cancelled && cancelled())
+            throw Cancelled();
+        std::lock_guard handlerLock(handlerMutex_);
+        restart_ = false;
+        auto temp = std::make_shared<NestedFile>();
+        if (fs::space(temp->path.parent_path()).available < entry.size)
+            throw Error("Недостаточно места для вложенного архива");
+        ComPtr<NestedOutput> output;
+        output.Attach(new NestedOutput(temp, cancelled));
+        ComPtr<NestedCallback> callback;
+        callback.Attach(new NestedCallback(id, output.Get(), cancelled));
+        ++metrics_->extractions;
+        HRESULT hr = archive_->Extract(&id, 1, 0, callback.Get());
+        if (cancelled && cancelled())
+            throw Cancelled();
+        check(hr, "Извлечение вложенного архива");
+        if (!callback->complete || output->size != entry.size)
+            throw Error("Вложенный архив повреждён или не прошёл проверку CRC");
+        ++metrics_->extractedEntries;
+        metrics_->extractedBytes += output->size;
+        auto child = std::make_unique<ArchiveSource>(temp->path, cache_, metrics_, cancelled, true);
+        child->nestedFile_ = temp;
+        child->path_ = nestedSourcePath(path_, entry);
+        bool found = false;
+        for (const auto& sibling : entries_) {
+            if (!sibling.archive)
+                continue;
+            if (sibling.id == id) {
+                found = true;
+                continue;
+            }
+            if (found) {
+                child->nextArchive_ = nestedSourcePath(path_, sibling);
+                break;
+            }
+            child->previousArchive_ = nestedSourcePath(path_, sibling);
+        }
+        child->displayName_ =
+            (displayName_.empty() ? path_.filename().wstring() : displayName_) + L" › " + entry.name;
+        auto key = parentVersion + ":nested:" + std::to_string(id);
+        child->identity_ = sha256(std::span<const uint8_t>((const uint8_t*)key.data(), key.size()));
+        if (rootVersion_) {
+            child->rootVersion_ = rootVersion_;
+            child->rootIdentity_ = rootIdentity_;
+        } else {
+            child->rootIdentity_ = parentVersion;
+            child->rootVersion_ = [paths = volumePaths_] {
+                if (paths.size() == 1)
+                    return fingerprint(paths.front());
+                std::string versions;
+                for (const auto& p : paths)
+                    versions += fingerprint(p);
+                return sha256(std::span<const uint8_t>((const uint8_t*)versions.data(), versions.size()));
+            };
+        }
+        return child;
+    }
     BytePtr read(uint32_t id, const Cancel& cancel) override {
+        if (byId_.contains(id) && byId_.at(id).archive)
+            throw Error("Выберите вложенный архив в дереве файлов");
         version(id);
         if (auto b = cached(id))
             return b;
@@ -588,7 +793,11 @@ class ArchiveSource final : public IImageSource {
             ComPtr<ExtractCallback> callback;
             callback.Attach(new ExtractCallback(*this));
             ++metrics_->extractions;
-            HRESULT hr = archive_->Extract(indices.data(), (UInt32)indices.size(), 0, callback.Get());
+            HRESULT hr;
+            {
+                std::lock_guard handlerLock(handlerMutex_);
+                hr = archive_->Extract(indices.data(), (UInt32)indices.size(), 0, callback.Get());
+            }
             {
                 std::lock_guard lock(mutex_);
                 inSession_ = false;
@@ -646,6 +855,8 @@ HRESULT ExtractCallback::GetStream(UInt32 index, ISequentialOutStream** stream, 
         const uint64_t limit = std::min<uint64_t>(512 * MiB, physicalMemory() / 16);
         auto e = owner_.byId_.find(index);
         if (e == owner_.byId_.end())
+            return S_OK;
+        if (e->second.archive)
             return S_OK;
         if (e->second.size > limit)
             return E_OUTOFMEMORY;

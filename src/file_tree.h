@@ -13,7 +13,8 @@ class FileTree {
   public:
     FileTree(HWND parent, std::function<void(const fs::path&)> open);
     void archiveCatalog(const fs::path& archive, const std::vector<Entry>& entries,
-                        std::function<void(size_t)> select);
+                        std::function<void(size_t)> select, std::function<void()> back = {},
+                        std::wstring label = {});
     void highlightArchive(size_t index);
     ~FileTree();
     HWND handle() const {
@@ -63,12 +64,14 @@ class FileTree {
         bool folder = true;
         std::vector<size_t> children;
         HTREEITEM handle = nullptr;
+        bool archive = false;
     };
     fs::path archivePath_;
     std::vector<ArchiveNode> archiveNodes_;
     std::vector<size_t> archiveImages_;
     std::optional<size_t> selectedArchiveImage_;
     std::function<void(size_t)> selectArchive_;
+    std::function<void()> backArchive_;
     std::atomic<uint64_t> generation_{0};
     std::atomic<bool> stopping_{false};
     std::mutex mutex_;
@@ -85,6 +88,7 @@ class FileTree {
     void attachArchive();
     void populateArchive(HTREEITEM item, size_t node);
     void clearArchive();
+    void activateArchiveSelection();
     void run();
     static LRESULT CALLBACK subclass(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 };

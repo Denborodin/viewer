@@ -36,6 +36,7 @@ int wmain(int argc, wchar_t** argv) {
         fixtures /= L"generated";
         require(fs::exists(fixtures / L"stored.zip"), "Run tests/make-fixtures.ps1 first");
         auto root = fs::absolute(fixtures / L"test-state" / std::to_wstring(GetCurrentProcessId()));
+        SetEnvironmentVariableW(L"VIEWER_DATA_DIR", root.c_str());
         auto state = std::make_shared<StateStore>(root);
         Settings settings;
         settings.diskBytes = 8 * MiB;
@@ -276,6 +277,60 @@ int wmain(int argc, wchar_t** argv) {
                    "Missing first volume rejected");
             throws([&] { openSource(fixtures / L"split.7z.001", cache, metrics, [] { return true; }); },
                    "Multipart opening can be cancelled");
+        }
+        {
+            auto m = std::make_shared<Metrics>();
+            auto local = std::make_shared<RawCache>(state, settings, m);
+            auto outer = openSource(fixtures / L"nested.7z.003", local, m, {});
+            require(outer->entries().size() == 4 && m->extractedEntries == 0,
+                    "Nested galleries listed without extraction");
+            const auto entry = outer->entries().front();
+            require(entry.archive && entry.name.ends_with(L"2.zip"),
+                    "Nested archives retain natural gallery order");
+            auto child = outer->nested(entry.id, {});
+            require(child->entries().size() == 14 && m->extractedEntries == 1,
+                    "Only selected ZIP extracted to open its image catalog");
+            auto frame = decodeImage(child->read(child->entries()[0].id, {}), 160, 100, MiB);
+            require(frame->width > 0, "Image decoded from ZIP inside multipart 7z");
+            auto address = child->path();
+            auto version = child->version(child->entries()[0].id);
+            child.reset();
+            require(fs::is_empty(root / L"nested"), "Temporary archive removed after closing gallery");
+            child = openSource(address, local, m, {});
+            require(child->version(child->entries()[0].id) == version,
+                    "Nested virtual address and cache identity survive reopen");
+            child.reset();
+            auto bad = std::find_if(outer->entries().begin(), outer->entries().end(),
+                                    [](auto& e) { return e.name.ends_with(L"broken.zip"); });
+            throws([&] { outer->nested(bad->id, {}); }, "Damaged inner ZIP is rejected");
+            require(fs::is_empty(root / L"nested"), "Failed inner archive leaves no temporary file");
+            auto inner7z = std::find_if(outer->entries().begin(), outer->entries().end(),
+                                        [](auto& e) { return e.name.ends_with(L"inner.7z"); });
+            child = outer->nested(inner7z->id, {});
+            require(!child->entries().empty(), "Nested 7z catalog");
+            child.reset();
+            throws([&] { outer->nested(entry.id, [] { return true; }); }, "Nested extraction cancellation");
+            int checks = 0;
+            throws([&] { outer->nested(entry.id, [&] { return ++checks >= 3; }); },
+                   "Cancellation during nested spooling");
+            require(fs::is_empty(root / L"nested"), "Cancellation leaves no temporary files");
+            auto rarOuter = openSource(fixtures / L"nested-rar.zip", local, m, {});
+            child = rarOuter->nested(rarOuter->entries()[0].id, {});
+            require(decodeImage(child->read(child->entries()[0].id, {}), 160, 100, MiB)->width > 0,
+                    "Single-file RAR gallery inside ZIP");
+            child.reset();
+            auto deepPath = fs::absolute(fixtures / L"depth5.zip");
+            for (int depth = 0; depth < 3; ++depth) {
+                auto level = openSource(deepPath, local, m, {});
+                deepPath = nestedSourcePath(level->path(), level->entries()[0]);
+            }
+            child = openSource(deepPath, local, m, {});
+            require(child->entries().size() == 1, "Three nested archive levels supported");
+            auto tooDeep = nestedSourcePath(child->path(), child->entries()[0]);
+            child.reset();
+            throws([&] { openSource(tooDeep, local, m, {}); }, "Fourth nesting level rejected");
+            require(fs::is_empty(root / L"nested"),
+                    "Depth-limit failure cleans intermediate temporary archives");
         }
         // Disk writes can fail while RAM-backed viewing must remain usable.
         {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(Viewer VERSION 0.1.4 LANGUAGES C CXX RC)
+project(Viewer VERSION 0.1.5 LANGUAGES C CXX RC)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "Viewer requires Windows x64")
 endif()
