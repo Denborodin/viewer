@@ -5,6 +5,7 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <sstream>
+#include <regex>
 namespace viewer {
 void check(HRESULT hr, const char* what) {
     if (FAILED(hr))
@@ -65,7 +66,24 @@ bool isImage(const fs::path& p) {
 }
 bool isArchive(const fs::path& p) {
     auto e = lower(p.extension().wstring());
-    return e == L".zip" || e == L".rar";
+    auto stem = lower(p.stem().extension().wstring());
+    bool numbered = (stem == L".7z" || stem == L".zip") && e.size() >= 4 &&
+                    std::all_of(e.begin() + 1, e.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+    return e == L".zip" || e == L".rar" || e == L".7z" || numbered || firstArchiveVolume(p) != p;
+}
+fs::path firstArchiveVolume(const fs::path& p) {
+    auto name = p.filename().wstring();
+    std::wsmatch m;
+    static const std::wregex numbered(LR"((.*\.(?:7z|zip))\.([0-9]{3,}))", std::regex::icase);
+    static const std::wregex rar(LR"((.*\.part)([0-9]+)(\.rar))", std::regex::icase);
+    static const std::wregex legacy(LR"((.*)\.([rz])([0-9]{2,}))", std::regex::icase);
+    if (std::regex_match(name, m, numbered))
+        return p.parent_path() / (m[1].str() + L"." + std::wstring(m[2].length() - 1, L'0') + L"1");
+    if (std::regex_match(name, m, rar))
+        return p.parent_path() / (m[1].str() + std::wstring(m[2].length() - 1, L'0') + L"1" + m[3].str());
+    if (std::regex_match(name, m, legacy))
+        return p.parent_path() / (m[1].str() + (lower(m[2].str()) == L"r" ? L".rar" : L".zip"));
+    return p;
 }
 bool naturalLess(std::wstring_view a, std::wstring_view b) {
     // Locale-independent numeric comparison, including arbitrarily long digit runs.

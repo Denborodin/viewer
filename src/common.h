@@ -43,6 +43,7 @@ fs::path dataDirectory();
 std::wstring lower(std::wstring value);
 bool isImage(const fs::path& path);
 bool isArchive(const fs::path& path);
+fs::path firstArchiveVolume(const fs::path& path);
 bool naturalLess(std::wstring_view a, std::wstring_view b);
 std::wstring quoteArgument(std::wstring_view argument);
 std::string sha256(std::span<const uint8_t> bytes);

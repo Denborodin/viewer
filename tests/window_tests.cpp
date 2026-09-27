@@ -177,6 +177,17 @@ int wmain(int argc, wchar_t** argv) {
         }
         require(cancelled, "Directory enumeration cancellation");
         {
+            auto folder = root / L"Multipart tree";
+            fs::create_directories(folder);
+            for (auto name : {L"1.7z", L"2.7z.001", L"2.7z.002", L"3.part01.rar", L"3.part02.rar", L"4.zip",
+                              L"4.z01", L"5.rar", L"5.r00"})
+                writeFileAtomic(folder / name, Bytes{1});
+            auto items = listTreeDirectory(folder);
+            require(items.size() == 5, "Tree lists each multipart set once");
+            require(adjacentArchive(items, folder / L"2.7z.001", 1) == folder / L"3.part01.rar",
+                    "Page Down skips companion volumes");
+        }
+        {
             Window window;
             window.app.currentPath = files / L"1.zip";
             window.app.fileTree->location(window.app.currentPath);
@@ -304,6 +315,14 @@ int wmain(int argc, wchar_t** argv) {
             waitFrame();
             require(window.app.model.selected == target && window.app.requestedToken == token,
                     "Selecting a nested ZIP image updates preview without reopening the archive");
+            for (auto name : {L"plain.7z", L"split.7z.003", L"volumes.part3.rar"}) {
+                auto input = fs::absolute(argv[2]).parent_path() / name;
+                window.app.open(input);
+                waitFrame();
+                require(window.app.currentPath == firstArchiveVolume(input) &&
+                            window.app.sourcePath == window.app.currentPath,
+                        "Viewer opens 7z and normalizes selected volume for tree and preview");
+            }
         }
         std::cout << "PASS " << assertions << " window and navigation assertions\n";
         CoUninitialize();

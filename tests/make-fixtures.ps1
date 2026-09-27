@@ -69,4 +69,6 @@ if($Benchmark){
   $zip.Dispose();$stream.Dispose()
  }
 }
+Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'fixtures') -File | Where-Object {$_.Name -match '^(rar4-vol|legacy|solid-vol)'} | Copy-Item -Destination $out -Force
+& (Join-Path $PSScriptRoot 'multipart-fixtures.ps1')
 Write-Output $out

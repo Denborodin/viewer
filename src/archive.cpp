@@ -70,6 +70,160 @@ class FileStream final : public SevenObject<IInStream> {
         return S_OK;
     }
 };
+// Numbered 7z/ZIP volumes are byte slices of one seekable archive, not nested archives.
+class SplitStream final : public SevenObject<IInStream> {
+    std::vector<fs::path> paths_;
+    std::vector<uint64_t> offsets_{0};
+    uint64_t position_ = 0;
+    size_t active_ = SIZE_MAX;
+    ComPtr<FileStream> stream_;
+    std::shared_ptr<Metrics> metrics_;
+    Cancel cancel_;
+
+  public:
+    SplitStream(const std::vector<fs::path>& paths, std::shared_ptr<Metrics> metrics, Cancel cancel)
+        : paths_(paths), metrics_(std::move(metrics)), cancel_(std::move(cancel)) {
+        for (const auto& path : paths_) {
+            auto size = fs::file_size(path);
+            if (!size || size > INT64_MAX - offsets_.back())
+                throw Error("Некорректный размер тома: " + utf8(path.filename().wstring()));
+            offsets_.push_back(offsets_.back() + size);
+        }
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) noexcept override {
+        *out = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IInStream && iid != IID_ISequentialInStream)
+            return E_NOINTERFACE;
+        *out = static_cast<IInStream*>(this);
+        AddRef();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Read(void* data, UInt32 size, UInt32* processed) noexcept override {
+        if (processed)
+            *processed = 0;
+        try {
+            UInt32 total = 0;
+            while (size && position_ < offsets_.back()) {
+                if (cancel_ && cancel_())
+                    return E_ABORT;
+                size_t index =
+                    std::upper_bound(offsets_.begin(), offsets_.end(), position_) - offsets_.begin() - 1;
+                if (active_ != index) {
+                    stream_.Attach(new FileStream(paths_[index], metrics_, cancel_));
+                    active_ = index;
+                }
+                HRESULT hr = stream_->Seek(position_ - offsets_[index], STREAM_SEEK_SET, nullptr);
+                if (FAILED(hr))
+                    return hr;
+                UInt32 n = 0;
+                hr = stream_->Read(static_cast<uint8_t*>(data) + total,
+                                   (UInt32)std::min<uint64_t>(size, offsets_[index + 1] - position_), &n);
+                if (FAILED(hr))
+                    return hr;
+                if (!n)
+                    return HRESULT_FROM_WIN32(ERROR_HANDLE_EOF);
+                position_ += n;
+                total += n;
+                size -= n;
+                if (processed)
+                    *processed = total;
+            }
+            return S_OK;
+        } catch (...) {
+            return E_FAIL;
+        }
+    }
+    HRESULT STDMETHODCALLTYPE Seek(Int64 offset, UInt32 origin, UInt64* pos) noexcept override {
+        uint64_t base = origin == STREAM_SEEK_SET   ? 0
+                        : origin == STREAM_SEEK_CUR ? position_
+                                                    : offsets_.back();
+        if (origin > STREAM_SEEK_END || (offset < 0 && uint64_t(-(offset + 1)) + 1 > base) ||
+            (offset >= 0 && uint64_t(offset) > INT64_MAX - base))
+            return STG_E_INVALIDFUNCTION;
+        position_ = offset < 0 ? base - (uint64_t(-(offset + 1)) + 1) : base + offset;
+        if (pos)
+            *pos = position_;
+        return S_OK;
+    }
+};
+class VolumeCallback final : public SevenObject<IArchiveOpenCallback>, public IArchiveOpenVolumeCallback {
+    fs::path first_;
+    std::shared_ptr<Metrics> metrics_;
+    Cancel cancel_;
+
+  public:
+    std::vector<fs::path> paths;
+    std::wstring missing;
+    VolumeCallback(fs::path first, std::shared_ptr<Metrics> metrics, Cancel cancel)
+        : first_(std::move(first)), metrics_(std::move(metrics)), cancel_(std::move(cancel)), paths{first_} {}
+    ULONG STDMETHODCALLTYPE AddRef() noexcept override {
+        return SevenObject::AddRef();
+    }
+    ULONG STDMETHODCALLTYPE Release() noexcept override {
+        return SevenObject::Release();
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) noexcept override {
+        *out = nullptr;
+        if (iid == IID_IUnknown || iid == IID_IArchiveOpenCallback)
+            *out = static_cast<IArchiveOpenCallback*>(this);
+        else if (iid == IID_IArchiveOpenVolumeCallback)
+            *out = static_cast<IArchiveOpenVolumeCallback*>(this);
+        else
+            return E_NOINTERFACE;
+        AddRef();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetTotal(const UInt64*, const UInt64*) noexcept override {
+        return cancel_ && cancel_() ? E_ABORT : S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetCompleted(const UInt64*, const UInt64*) noexcept override {
+        return cancel_ && cancel_() ? E_ABORT : S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetProperty(PROPID id, PROPVARIANT* value) noexcept override {
+        PropVariantInit(value);
+        try {
+            if (id == kpidName) {
+                value->vt = VT_BSTR;
+                value->bstrVal = SysAllocString(first_.filename().c_str());
+                return value->bstrVal ? S_OK : E_OUTOFMEMORY;
+            }
+            if (id == kpidSize) {
+                value->vt = VT_UI8;
+                value->uhVal.QuadPart = fs::file_size(first_);
+            }
+            if (id == kpidIsDir) {
+                value->vt = VT_BOOL;
+                value->boolVal = VARIANT_FALSE;
+            }
+            return S_OK;
+        } catch (...) {
+            return E_FAIL;
+        }
+    }
+    HRESULT STDMETHODCALLTYPE GetStream(const wchar_t* name, IInStream** out) noexcept override {
+        *out = nullptr;
+        try {
+            if (cancel_ && cancel_())
+                return E_ABORT;
+            fs::path leaf(name);
+            // Volume names are untrusted archive metadata; only sibling files are permitted.
+            if (leaf.empty() || leaf != leaf.filename() || leaf == L".." ||
+                leaf.wstring().find(L':') != std::wstring::npos)
+                return E_ACCESSDENIED;
+            auto path = first_.parent_path() / leaf;
+            if (!fs::is_regular_file(path)) {
+                missing = leaf.wstring();
+                return S_FALSE;
+            }
+            if (std::find(paths.begin(), paths.end(), path) == paths.end())
+                paths.push_back(path);
+            *out = new FileStream(path, metrics_, cancel_);
+            return S_OK;
+        } catch (...) {
+            return E_FAIL;
+        }
+    }
+};
 struct Property {
     PROPVARIANT p{};
     ~Property() {
@@ -161,7 +315,18 @@ class ArchiveSource final : public IImageSource {
     std::shared_ptr<Metrics> metrics_;
     HMODULE module_ = nullptr;
     ComPtr<IInArchive> archive_;
-    ComPtr<FileStream> file_;
+    ComPtr<IInStream> file_;
+    ComPtr<VolumeCallback> volumes_;
+    std::vector<fs::path> volumePaths_;
+    std::string volumeVersion() const {
+        // Keep existing cache and saved-position keys for ordinary single-file archives.
+        if (volumePaths_.size() == 1)
+            return fingerprint(volumePaths_.front());
+        std::string versions;
+        for (const auto& path : volumePaths_)
+            versions += fingerprint(path);
+        return sha256(std::span<const uint8_t>((const uint8_t*)versions.data(), versions.size()));
+    }
     std::mutex mutex_;
     std::condition_variable cv_;
     std::thread worker_;
@@ -182,7 +347,6 @@ class ArchiveSource final : public IImageSource {
                   const Cancel& cancel)
         : cache_(std::move(cache)), metrics_(std::move(metrics)), openingCancel_(cancel) {
         path_ = p;
-        identity_ = fingerprint(p);
         module_ = LoadLibraryExW((executablePath().parent_path() / L"7z.dll").c_str(), nullptr,
                                  LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!module_)
@@ -192,9 +356,39 @@ class ArchiveSource final : public IImageSource {
             auto create = (Create)GetProcAddress(module_, "CreateObject");
             if (!create)
                 throw Error("Несовместимая 7z.dll");
-            file_.Attach(new FileStream(p, metrics_, [this] {
+            Cancel stopped = [this] {
                 return stop_.load() || restart_.load() || (opening_ && openingCancel_ && openingCancel_());
-            }));
+            };
+            volumes_.Attach(new VolumeCallback(p, metrics_, stopped));
+            if (!fs::is_regular_file(p))
+                throw Error("Отсутствует первый том: " + utf8(p.filename().wstring()));
+            auto ext = lower(p.stem().extension().wstring());
+            if ((ext == L".7z" || ext == L".zip") && p.extension() != L".7z" && p.extension() != L".zip") {
+                for (auto& item : fs::directory_iterator(p.parent_path())) {
+                    if (cancel && cancel())
+                        throw Cancelled();
+                    if (item.is_regular_file() &&
+                        lower(firstArchiveVolume(item.path()).wstring()) == lower(p.wstring()))
+                        volumePaths_.push_back(item.path());
+                }
+                std::sort(volumePaths_.begin(), volumePaths_.end(), [](auto& a, auto& b) {
+                    return naturalLess(a.filename().wstring(), b.filename().wstring());
+                });
+                for (size_t i = 0; i < volumePaths_.size(); ++i) {
+                    auto digits = std::to_wstring(i + 1);
+                    size_t width = p.extension().wstring().size() - 1;
+                    if (digits.size() < width)
+                        digits.insert(0, width - digits.size(), L'0');
+                    auto expected = p.parent_path() / (p.stem().wstring() + L"." + digits);
+                    if (lower(volumePaths_[i].wstring()) != lower(expected.wstring()))
+                        throw Error("Отсутствует том: " + utf8(expected.filename().wstring()));
+                }
+                if (volumePaths_.empty())
+                    throw Error("Отсутствует первый том: " + utf8(p.filename().wstring()));
+                file_.Attach(new SplitStream(volumePaths_, metrics_, stopped));
+            } else {
+                file_.Attach(new FileStream(p, metrics_, stopped));
+            }
             uint8_t signature[8]{};
             UInt32 n = 0;
             check(file_->Read(signature, 8, &n), "Чтение архива");
@@ -202,16 +396,26 @@ class ArchiveSource final : public IImageSource {
             uint8_t format = 1;
             if (n >= 7 && memcmp(signature, "Rar!\x1a\x07", 6) == 0)
                 format = signature[6] == 1 ? 0xCC : 3;
+            else if (n >= 6 && memcmp(signature, "7z\xbc\xaf\x27\x1c", 6) == 0)
+                format = 7;
             GUID clsid = {0x23170F69, 0x40C1, 0x278A, {0x10, 0, 0, 1, 0x10, format, 0, 0}};
             check(create(&clsid, &IID_IInArchive, (void**)archive_.GetAddressOf()), "Архиватор");
             UInt64 max = 0;
-            HRESULT hr = archive_->Open(file_.Get(), &max, nullptr);
+            HRESULT hr = archive_->Open(file_.Get(), &max, volumes_.Get());
+            if (cancel && cancel())
+                throw Cancelled();
             if (hr != S_OK)
-                throw Error("Не удалось открыть архив: повреждение, пароль или неподдерживаемый формат");
-            Property volume;
-            archive_->GetArchiveProperty(kpidIsVolume, &volume.p);
-            if (volume.boolean())
-                throw Error("Многотомные архивы пока не поддерживаются");
+                throw Error("Не удалось открыть архив: повреждение, пароль или отсутствует том" +
+                            (volumes_->missing.empty() ? std::string() : ": " + utf8(volumes_->missing)));
+            Property flags, error;
+            archive_->GetArchiveProperty(kpidErrorFlags, &flags.p);
+            archive_->GetArchiveProperty(kpidError, &error.p);
+            if (flags.number() || !error.string().empty())
+                throw Error("Архив повреждён или отсутствует том: " + utf8(error.string()) + " " +
+                            utf8(volumes_->missing));
+            if (volumePaths_.empty())
+                volumePaths_ = volumes_->paths;
+            identity_ = volumeVersion();
             Property encrypted;
             archive_->GetArchiveProperty(kpidEncrypted, &encrypted.p);
             if (encrypted.boolean())
@@ -222,17 +426,22 @@ class ArchiveSource final : public IImageSource {
             for (uint32_t i = 0; i < count; ++i) {
                 if (cancel && cancel())
                     throw Cancelled();
-                Property dir, name, size, solid, enc, link, alt;
+                Property dir, name, size, solid, enc, link, alt, folder;
                 archive_->GetProperty(i, kpidIsDir, &dir.p);
                 archive_->GetProperty(i, kpidPath, &name.p);
                 archive_->GetProperty(i, kpidSize, &size.p);
                 archive_->GetProperty(i, kpidSolid, &solid.p);
+                archive_->GetProperty(i, kpidBlock, &folder.p);
                 archive_->GetProperty(i, kpidEncrypted, &enc.p);
                 archive_->GetProperty(i, kpidSymLink, &link.p);
                 archive_->GetProperty(i, kpidIsAltStream, &alt.p);
                 if (dir.boolean())
                     continue;
-                if (!solid.boolean())
+                if (format == 7 && (folder.p.vt == VT_UI4 || folder.p.vt == VT_UI8)) {
+                    block = (uint32_t)folder.number();
+                    if (blocks_.contains(block))
+                        blockSolid_[block] = true;
+                } else if (!solid.boolean())
                     block = i;
                 else
                     blockSolid_[block] = true;
@@ -293,7 +502,7 @@ class ArchiveSource final : public IImageSource {
         return i != byId_.end() && blockSolid_.contains(i->second.block) && blockSolid_.at(i->second.block);
     }
     std::string version(uint32_t) const override {
-        if (fingerprint(path_) != identity_)
+        if (volumeVersion() != identity_)
             throw Error("Архив изменён. Откройте его заново.");
         return identity_;
     }
@@ -401,7 +610,8 @@ class ArchiveSource final : public IImageSource {
                     else if (serial_ == serial) {
                         errors_[*desired_] = "Архив не вернул запрошенный элемент";
                         handled_ = serial_;
-                    } else handled_ = 0;
+                    } else
+                        handled_ = 0;
                 }
             }
             cv_.notify_all();

@@ -87,24 +87,27 @@ int wmain(int argc, wchar_t** argv) {
                "Broken image rejected");
         throws([&] { openSource(fixtures / L"broken.zip", cache, metrics, {}); }, "Broken archive rejected");
         {
-            auto bad=std::make_shared<Bytes>(*readFile(fixtures/L"stored.zip"));
-            auto u16=[&](size_t p){return (*bad)[p]+256*(*bad)[p+1];};
-            size_t data=30+u16(26)+u16(28);
-            (*bad)[data+50]^=1;
-            auto path=root/L"bad-crc.zip";writeFileAtomic(path,*bad);
-            auto source=openSource(path,cache,metrics,{});
-            throws([&]{source->read(0,{});},"ZIP checksum failure returned without hanging");
+            auto bad = std::make_shared<Bytes>(*readFile(fixtures / L"stored.zip"));
+            auto u16 = [&](size_t p) { return (*bad)[p] + 256 * (*bad)[p + 1]; };
+            size_t data = 30 + u16(26) + u16(28);
+            (*bad)[data + 50] ^= 1;
+            auto path = root / L"bad-crc.zip";
+            writeFileAtomic(path, *bad);
+            auto source = openSource(path, cache, metrics, {});
+            throws([&] { source->read(0, {}); }, "ZIP checksum failure returned without hanging");
         }
         {
-            auto folder=root/L"folder";fs::create_directories(folder/L"nested");
-            auto path=folder/L"1.png";
-            auto first=readFile(fixtures/L"images/1.png"),second=readFile(fixtures/L"images/2.png");
-            writeFileAtomic(path,*first);writeFileAtomic(folder/L"nested/2.png",*second);
-            auto source=openSource(folder,cache,metrics,{});
-            require(source->entries().size()==1,"Folders are not recursive");
-            auto old=source->read(0,{});
-            writeFileAtomic(path,*second);
-            require(*source->read(0,{})!=*old,"Modified image invalidates encoded cache");
+            auto folder = root / L"folder";
+            fs::create_directories(folder / L"nested");
+            auto path = folder / L"1.png";
+            auto first = readFile(fixtures / L"images/1.png"), second = readFile(fixtures / L"images/2.png");
+            writeFileAtomic(path, *first);
+            writeFileAtomic(folder / L"nested/2.png", *second);
+            auto source = openSource(folder, cache, metrics, {});
+            require(source->entries().size() == 1, "Folders are not recursive");
+            auto old = source->read(0, {});
+            writeFileAtomic(path, *second);
+            require(*source->read(0, {}) != *old, "Modified image invalidates encoded cache");
         }
         throws(
             [&] {
@@ -177,8 +180,103 @@ int wmain(int argc, wchar_t** argv) {
         if (fs::exists(fixtures / L"password.rar"))
             throws([&] { openSource(fixtures / L"password.rar", cache, metrics, {}); },
                    "Password archive rejected");
-        throws([&] { openSource(fixtures / L"volumes.part1.rar", cache, metrics, {}); },
-               "Multivolume rejected");
+        require(isArchive(L"book.7Z") && isArchive(L"book.7z.001") && isArchive(L"book.zip.002") &&
+                    isArchive(L"book.r00") && isArchive(L"book.z01") && !isArchive(L"notes.001"),
+                "Archive and volume extension recognition");
+        require(firstArchiveVolume(L"book.part003.rar") == L"book.part001.rar" &&
+                    firstArchiveVolume(L"book.7z.003") == L"book.7z.001" &&
+                    firstArchiveVolume(L"book.r01") == L"book.rar" &&
+                    firstArchiveVolume(L"book.z01") == L"book.zip",
+                "Selecting a later volume resolves the archive entry point");
+        for (auto name :
+             {L"plain.7z", L"solid.7z", L"split.7z.001", L"split.7z.003", L"split.zip.001", L"split.zip.003",
+              L"disk.zip", L"disk.z02", L"volumes.part1.rar", L"volumes.part3.rar", L"rar4-vol.part1.rar",
+              L"rar4-vol.part3.rar", L"legacy.rar", L"legacy.r01"}) {
+            auto m = std::make_shared<Metrics>();
+            auto local = std::make_shared<RawCache>(state, settings, m);
+            auto source = openSource(fixtures / name, local, m, {});
+            require(!source->entries().empty(), "7z/multipart catalog");
+            require(m->extractedEntries == 0, "Multipart catalog does not extract images");
+            auto bitmap = std::find_if(source->entries().begin(), source->entries().end(),
+                                       [](const Entry& e) { return e.name == L"bitmap.bmp"; });
+            require(bitmap != source->entries().end(), "Multipart bitmap catalog entry");
+            require(*source->read(bitmap->id, {}) == *readFile(fixtures / L"images/bitmap.bmp"),
+                    "Image bytes are exact across volume boundaries");
+        }
+        {
+            auto m = std::make_shared<Metrics>();
+            auto noDisk = settings;
+            noDisk.diskBytes = 0;
+            auto local = std::make_shared<RawCache>(state, noDisk, m);
+            auto source = openSource(fixtures / L"solid.7z", local, m, {});
+            auto entries = source->entries();
+            std::sort(entries.begin(), entries.end(), [](auto& a, auto& b) { return a.id < b.id; });
+            for (size_t i = 0; i < 3; ++i)
+                source->read(entries[i].id, {});
+            require(m->extractions == 1, "Solid 7z continues one extraction session");
+            source->cancel();
+            source->read(entries[3].id, {});
+        }
+        {
+            auto m = std::make_shared<Metrics>();
+            auto noDisk = settings;
+            noDisk.diskBytes = 0;
+            auto local = std::make_shared<RawCache>(state, noDisk, m);
+            auto source = openSource(fixtures / L"solid-vol.part2.rar", local, m, {});
+            auto entries = source->entries();
+            std::sort(entries.begin(), entries.end(), [](auto& a, auto& b) { return a.id < b.id; });
+            for (size_t i = 0; i < 3; ++i)
+                require(*source->read(entries[i].id, {}) == *readFile(fixtures / L"images" / entries[i].name),
+                        "Solid multipart RAR image bytes");
+            require(m->extractions == 1, "Solid multipart RAR retains extraction session");
+        }
+        for (auto prefix : {L"volumes.part", L"split.7z.", L"disk."}) {
+            auto folder = root / prefix;
+            fs::create_directories(folder);
+            for (auto& file : fs::directory_iterator(fixtures)) {
+                auto name = file.path().filename().wstring();
+                if (file.is_regular_file() && name.starts_with(prefix) && name != L"volumes.part2.rar" &&
+                    name != L"split.7z.002" && name != L"disk.z02")
+                    fs::copy_file(file.path(), folder / file.path().filename());
+            }
+            auto name = std::wstring(prefix) == L"volumes.part" ? L"volumes.part1.rar"
+                        : std::wstring(prefix) == L"disk."      ? L"disk.zip"
+                                                                : L"split.7z.001";
+            throws([&] { openSource(folder / name, cache, metrics, {}); },
+                   "Missing middle volume is rejected");
+        }
+        {
+            auto folder = root / L"changed-volume";
+            fs::create_directories(folder);
+            for (auto& file : fs::directory_iterator(fixtures))
+                if (file.path().filename().wstring().starts_with(L"volumes.part"))
+                    fs::copy_file(file.path(), folder / file.path().filename());
+            auto source = openSource(folder / L"volumes.part1.rar", cache, metrics, {});
+            auto before = source->version(source->entries()[0].id);
+            source.reset();
+            auto part = folder / L"volumes.part2.rar";
+            fs::last_write_time(part, fs::last_write_time(part) + std::chrono::seconds(5));
+            source = openSource(folder / L"volumes.part1.rar", cache, metrics, {});
+            require(before != source->version(source->entries()[0].id),
+                    "Companion changes invalidate archive cache");
+        }
+        {
+            auto folder = root / L"missing-last";
+            fs::create_directories(folder);
+            std::vector<fs::path> parts;
+            for (auto& file : fs::directory_iterator(fixtures))
+                if (file.path().filename().wstring().starts_with(L"split.7z."))
+                    parts.push_back(file.path());
+            std::sort(parts.begin(), parts.end());
+            for (size_t i = 0; i + 1 < parts.size(); ++i)
+                fs::copy_file(parts[i], folder / parts[i].filename());
+            throws([&] { openSource(folder / L"split.7z.001", cache, metrics, {}); },
+                   "Missing final volume rejected");
+            throws([&] { openSource(root / L"absent.part3.rar", cache, metrics, {}); },
+                   "Missing first volume rejected");
+            throws([&] { openSource(fixtures / L"split.7z.001", cache, metrics, [] { return true; }); },
+                   "Multipart opening can be cancelled");
+        }
         // Disk writes can fail while RAM-backed viewing must remain usable.
         {
             auto staleState = std::make_shared<StateStore>(root / L"expired");

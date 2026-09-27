@@ -132,8 +132,10 @@ int wmain(int argc, wchar_t** argv) {
             check(getFactory(id, IID_PPV_ARGS(&factory)), "Shell factory");
             ComPtr<IExplorerCommand> command;
             check(factory->CreateInstance(nullptr, IID_PPV_ARGS(&command)), "Shell command");
-            for (const auto& path : {fixtures, fixtures / L"stored.zip", fixtures / L"rar5.rar",
-                                     output / L"alpha.webp", output / L"supported.PSD"}) {
+            for (const auto& path :
+                 {fixtures, fixtures / L"stored.zip", fixtures / L"rar5.rar", output / L"alpha.webp",
+                  output / L"supported.PSD", fixtures / L"plain.7z", fixtures / L"split.7z.003",
+                  fixtures / L"split.zip.001", fixtures / L"disk.z02", fixtures / L"volumes.part3.rar"}) {
                 auto items = selection({path});
                 EXPCMDSTATE state = ECS_HIDDEN;
                 check(command->GetState(items.Get(), FALSE, &state), "GetState");
@@ -162,9 +164,9 @@ int wmain(int argc, wchar_t** argv) {
             require(std::wstring(title) == L"Открыть в Viewer", "Registered surrogate command");
             CoTaskMemFree(title);
             auto psd = selection({output / L"supported.PSD"});
-            EXPCMDSTATE state=ECS_HIDDEN;
-            check(registered->GetState(psd.Get(),FALSE,&state),"Registered PSD state");
-            require(state==ECS_ENABLED,"Registered PSD command enabled");
+            EXPCMDSTATE state = ECS_HIDDEN;
+            check(registered->GetState(psd.Get(), FALSE, &state), "Registered PSD state");
+            require(state == ECS_ENABLED, "Registered PSD command enabled");
         }
         std::cout << "PASS " << assertions << " graphics and shell assertions\n";
         CoUninitialize();

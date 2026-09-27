@@ -48,7 +48,7 @@ std::unique_ptr<IImageSource> openSource(const fs::path& input, std::shared_ptr<
     if (fs::is_directory(path) || isImage(path))
         return std::make_unique<FolderSource>(path, std::move(cache), cancel);
     if (isArchive(path))
-        return openArchive(path, std::move(cache), std::move(metrics), cancel);
-    throw Error("Выберите изображение, папку, ZIP или RAR");
+        return openArchive(firstArchiveVolume(path), std::move(cache), std::move(metrics), cancel);
+    throw Error("Выберите изображение, папку, ZIP, RAR или 7z");
 }
 } // namespace viewer

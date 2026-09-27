@@ -78,7 +78,7 @@ struct App {
         return show == SW_SHOWNORMAL || show == SW_SHOW || show == SW_SHOWDEFAULT ? restored : show;
     }
     void open(const fs::path& path, std::optional<uint32_t> entry = {}) {
-        currentPath = fs::absolute(path).lexically_normal();
+        currentPath = firstArchiveVolume(fs::absolute(path).lexically_normal());
         if (fileTree)
             fileTree->location(currentPath);
         model.loading = true;
@@ -90,7 +90,7 @@ struct App {
         model.fit = true;
         model.panX = model.panY = 0;
         decodeSize();
-        requestedToken = pipeline->open(path, entry);
+        requestedToken = pipeline->open(currentPath, entry);
         invalidate();
     }
     void layoutTree() {
@@ -171,8 +171,8 @@ struct App {
         dialog->SetOptions(flags | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | (folder ? FOS_PICKFOLDERS : 0));
         if (!folder) {
             COMDLG_FILTERSPEC filter[] = {
-                {L"Изображения и архивы",
-                 L"*.jpg;*.jpeg;*.jpe;*.png;*.webp;*.bmp;*.gif;*.tif;*.tiff;*.psd;*.zip;*.rar"},
+                {L"Изображения и архивы", L"*.jpg;*.jpeg;*.jpe;*.png;*.webp;*.bmp;*.gif;*.tif;*.tiff;*.psd;*."
+                                          L"zip;*.rar;*.7z;*.7z.*;*.zip.*;*.r??;*.z??"},
                 {L"Все файлы", L"*.*"}};
             dialog->SetFileTypes(2, filter);
         }
@@ -279,11 +279,12 @@ struct App {
             DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_SETTINGS), window, settingsProc, (LPARAM)this);
             break;
         case About:
-            MessageBoxW(window,
-                        L"Viewer 0.1.3\nНативный просмотр изображений, ZIP и RAR.\n\nF11 — полный экран · "
-                        L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
-                        L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
-                        L"О Viewer", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(
+                window,
+                L"Viewer 0.1.4\nНативный просмотр изображений, ZIP, RAR и 7z.\n\nF11 — полный экран · "
+                L"Ctrl+B — закладка\nCtrl+колесо — масштаб · R — поворот\n\n7-Zip 26.03 · libwebp "
+                L"1.6.0 · Windows WIC\nЛицензии находятся в папке licenses.",
+                L"О Viewer", MB_OK | MB_ICONINFORMATION);
             break;
         }
     }

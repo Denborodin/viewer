@@ -14,7 +14,9 @@ std::vector<TreeEntry> listTreeDirectory(const fs::path& folder, const Cancel& c
             throw Cancelled();
         std::error_code status;
         bool directory = it->is_directory(status);
-        if (!status && (directory || isArchive(it->path()) || isImage(it->path())))
+        if (!status &&
+            (directory || (isArchive(it->path()) && firstArchiveVolume(it->path()) == it->path()) ||
+             isImage(it->path())))
             result.push_back({it->path(), directory});
     }
     if (ec)
